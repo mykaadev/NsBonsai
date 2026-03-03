@@ -25,8 +25,7 @@ public class NsBonsai : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
-				// ... add other public dependencies that you statically link with here ...
+				"Core"
 			}
 			);
 			
@@ -38,7 +37,7 @@ public class NsBonsai : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"DeveloperSettings"
 			}
 			);
 		
