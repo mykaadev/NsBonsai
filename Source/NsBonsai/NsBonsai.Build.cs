@@ -43,6 +43,18 @@ public class NsBonsai : ModuleRules
 			);
 		
 		
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(
+				new string[]
+				{
+					"AssetTools",
+					"UnrealEd",
+				}
+			);
+		}
+
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{
