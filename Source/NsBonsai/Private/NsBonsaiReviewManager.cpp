@@ -140,34 +140,50 @@ public:
 			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(8)
 			[
 				SAssignNew(ListView, SListView<TSharedPtr<NsBonsaiReview::FRowModel>>)
-				.ListItemsSource(&Rows)
-				.OnGenerateRow(this, &SNsBonsaiReviewWindow::OnGenerateRow)
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(8)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4)
+		TSharedRef<SWidget> CategoryWidget = BuildCategorySelector(Row);
+
+						CategoryWidget
+	TSharedRef<SWidget> BuildCategorySelector(TSharedPtr<NsBonsaiReview::FRowModel> Row)
+	{
+		if (Row->CategoryOptions.Num() > 0)
+		{
+			return SNew(SComboBox<TSharedPtr<FName>>)
+				.OptionsSource(&Row->CategoryOptions)
+				.OnGenerateWidget_Lambda([](TSharedPtr<FName> Name)
+				{
+					return SNew(STextBlock).Text(FText::FromName(Name.IsValid() ? *Name : NAME_None));
+				})
+				.OnSelectionChanged_Lambda([Row](TSharedPtr<FName> NewSelection, ESelectInfo::Type)
+				{
+					if (!NewSelection.IsValid())
+					{
+						return;
+					}
+
+					Row->SelectedCategory = *NewSelection;
+					Row->bCategoryConfirmed = true;
+					NsBonsaiReview::RebuildPreview(*Row);
+				})
 				[
-					SNew(SButton)
-					.Text(FText::FromString(TEXT("Rename All")))
-					.IsEnabled(this, &SNsBonsaiReviewWindow::CanRenameAll)
-					.OnClicked(this, &SNsBonsaiReviewWindow::OnRenameAllClicked)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4)
-				[
-					SNew(SButton)
-					.Text(FText::FromString(TEXT("Cancel")))
-					.OnClicked(this, &SNsBonsaiReviewWindow::OnCancelClicked)
-				]
-			]
-		];
+					SNew(STextBlock).Text_Lambda([Row]
+					{
+						return FText::FromName(Row->SelectedCategory);
+					})
+				];
+		}
+
+		return SAssignNew(Row->FreeCategoryInput, SEditableTextBox)
+			.HintText(FText::FromString(TEXT("Category")))
+			.OnTextChanged_Lambda([Row](const FText& NewText)
+			{
+				const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
+				const TArray<FString> Tokens = FNsBonsaiNameBuilder::SanitizeDescriptors({NewText.ToString()}, *Settings);
+				Row->SelectedCategory = Tokens.Num() > 0 ? FName(*Tokens[0]) : NAME_None;
+				Row->bCategoryConfirmed = Tokens.Num() > 0;
+				NsBonsaiReview::RebuildPreview(*Row);
+			});
 	}
 
-private:
-	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<NsBonsaiReview::FRowModel> Row, const TSharedRef<STableViewBase>& Owner)
-	{
-		return SNew(STableRow<TSharedPtr<NsBonsaiReview::FRowModel>>, Owner)
-		[
 			SNew(SBorder)
 			.Padding(6)
 			[
