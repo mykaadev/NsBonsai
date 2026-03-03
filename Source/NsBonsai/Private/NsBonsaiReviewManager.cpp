@@ -3,127 +3,186 @@
 #if WITH_EDITOR
 
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "Containers/Ticker.h"
-#include "Misc/CoreDelegates.h"
-#include "NsBonsaiAssetEvaluator.h"
-#include "NsBonsaiNameBuilder.h"
-#include "NsBonsaiSettings.h"
-#include "NsBonsaiUserSettings.h"
 #include "AssetToolsModule.h"
-#include "IAssetTools.h"
 #include "Framework/Application/SlateApplication.h"
+#include "IAssetTools.h"
 #include "Modules/ModuleManager.h"
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SWrapBox.h"
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/SWindow.h"
-#include "Widgets/Text/STextBlock.h"
-#include "UObject/ObjectSaveContext.h"
-#include "Widgets/Views/STableRow.h"
-#include "Widgets/Views/SListView.h"
 #include "Widgets/SCompoundWidget.h"
-
-namespace NsBonsaiReview
-{
-	struct FRowModel
-	{
-		FAssetData AssetData;
-		FString CurrentName;
-		TArray<TSharedPtr<FName>> DomainOptions;
-		TArray<TSharedPtr<FName>> CategoryOptions;
-		TArray<FString> Descriptors;
-		TArray<FString> RecentDescriptorChips;
-		TSet<FString> DescriptorKeySet;
-		FName SelectedDomain;
-		FName SelectedCategory;
-		FString Variant;
+#include "Widgets/Views/STableRow.h"
 		FString PreviewName;
-		bool bDomainConfirmed = false;
-		bool bCategoryConfirmed = false;
-		TSharedPtr<SEditableTextBox> DescriptorInput;
-		TSharedPtr<SEditableTextBox> FreeCategoryInput;
-	};
+		FString Variant = TEXT("A");
 
-	void RebuildPreview(FRowModel& Row)
-	{
-		const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
-		FNsBonsaiNameBuildInput BuildInput;
-		BuildInput.TypeToken = Settings->ResolveTypeTokenForClassPath(Row.AssetData.AssetClassPath);
-		BuildInput.DomainToken = Row.SelectedDomain;
-		BuildInput.CategoryToken = Row.SelectedCategory;
-		BuildInput.Descriptors = Row.Descriptors;
-		BuildInput.VariantToken = Row.Variant;
-		Row.PreviewName = FNsBonsaiNameBuilder::BuildFinalAssetName(BuildInput, *Settings);
-	}
 
-	void AddDescriptor(FRowModel& Row, const FString& RawDescriptor)
-	{
-		const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
-		TArray<FString> Sanitized = FNsBonsaiNameBuilder::SanitizeDescriptors({RawDescriptor}, *Settings);
-		if (Sanitized.Num() == 0)
-		{
-			return;
-		}
+		TArray<FString> Descriptors;
+		TSet<FString> DescriptorKeys;
+		TArray<FString> RecentDescriptorChips;
+	static void RebuildPreview(FRowModel& Row)
+	static void AddDescriptor(FRowModel& Row, const FString& RawDescriptor)
+		const TArray<FString> Sanitized = FNsBonsaiNameBuilder::SanitizeDescriptors({RawDescriptor}, *Settings);
+		const FString Descriptor = Sanitized[0];
+		if (Row.DescriptorKeys.Contains(Key))
+		Row.DescriptorKeys.Add(Key);
+			Row.Descriptors.Sort([](const FString& A, const FString& B)
+				return A.Compare(B, ESearchCase::IgnoreCase) < 0;
 
-		const FString& Descriptor = Sanitized[0];
-		const FString Key = Descriptor.ToLower();
-		if (Row.DescriptorKeySet.Contains(Key))
-		{
-			return;
-		}
+class SNsBonsaiReviewWindow : public SCompoundWidget
 
-		Row.DescriptorKeySet.Add(Key);
-		Row.Descriptors.Add(Descriptor);
-		if (Settings->bSortDescriptorsAlpha)
-		{
-			Row.Descriptors.Sort([](const FString& Left, const FString& Right)
-			{
-				return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
-			});
-		}
-		RebuildPreview(Row);
-	}
-}
-
-class SNsBonsaiReviewWindow final : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SNsBonsaiReviewWindow) {}
-		SLATE_ARGUMENT(TArray<FAssetData>, Assets)
-		SLATE_ARGUMENT(TWeakPtr<SWindow>, ParentWindow)
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& InArgs)
-	{
-		ParentWindow = InArgs._ParentWindow;
-		const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
-		const UNsBonsaiUserSettings* UserSettings = GetDefault<UNsBonsaiUserSettings>();
-
-		for (const FAssetData& Asset : InArgs._Assets)
-		{
-			FNsBonsaiEvaluationResult Eval = FNsBonsaiAssetEvaluator::Evaluate(Asset, *Settings, *UserSettings);
-			TSharedPtr<NsBonsaiReview::FRowModel> Row = MakeShared<NsBonsaiReview::FRowModel>();
-			Row->AssetData = Asset;
-			Row->CurrentName = Asset.AssetName.ToString();
-			Row->SelectedDomain = Eval.PreselectedDomain;
-			Row->SelectedCategory = Eval.PreselectedCategory;
-			Row->Variant = TEXT("A");
-			for (const FName Domain : Eval.DomainCandidates)
-			{
-				Row->DomainOptions.Add(MakeShared<FName>(Domain));
-			}
-			for (const FName Category : Eval.CategoryCandidates)
-			{
-				Row->CategoryOptions.Add(MakeShared<FName>(Category));
-			}
-
+		for (const FAssetData& AssetData : InArgs._Assets)
+			const FNsBonsaiEvaluationResult Eval = FNsBonsaiAssetEvaluator::Evaluate(AssetData, *Settings, *UserSettings);
+			Row->AssetData = AssetData;
+			Row->CurrentName = AssetData.AssetName.ToString();
 			Row->RecentDescriptorChips = Eval.RecentDescriptorChips;
-			for (const FString& Existing : Eval.ExistingDescriptors)
+
+
+			for (const FString& Descriptor : Eval.ExistingDescriptors)
+				NsBonsaiReview::AddDescriptor(*Row, Descriptor);
+
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("Review newly added assets (Domain + Category required)")))
+				.OnGenerateRow(this, &SNsBonsaiReviewWindow::GenerateRow)
+					.OnClicked(this, &SNsBonsaiReviewWindow::OnRenameAll)
+					.OnClicked(this, &SNsBonsaiReviewWindow::OnCancel)
+	TSharedRef<ITableRow> GenerateRow(TSharedPtr<NsBonsaiReview::FRowModel> Row, const TSharedRef<STableViewBase>& OwnerTable)
+		return SNew(STableRow<TSharedPtr<NsBonsaiReview::FRowModel>>, OwnerTable)
+						BuildDomainSelector(Row)
+						BuildCategorySelector(Row)
+						SNew(SButton)
+						.Text(FText::FromString(TEXT("+")))
+						.OnClicked_Lambda([this, Row]()
+								if (ListView.IsValid())
+								{
+									ListView->RequestListRefresh();
+								}
+					SNew(STextBlock)
+					.Text_Lambda([Row]
+					{
+						return FText::FromString(FString::Printf(TEXT("Preview: %s"), *Row->PreviewName));
+					})
+	TSharedRef<SWidget> BuildDomainSelector(TSharedPtr<NsBonsaiReview::FRowModel> Row)
+	{
+		return SNew(SComboBox<TSharedPtr<FName>>)
+			.OptionsSource(&Row->DomainOptions)
+			.OnGenerateWidget_Lambda([](TSharedPtr<FName> Item)
 			{
+				return SNew(STextBlock).Text(FText::FromName(Item.IsValid() ? *Item : NAME_None));
+			})
+			.OnSelectionChanged_Lambda([this, Row](TSharedPtr<FName> Item, ESelectInfo::Type)
+			{
+				if (!Item.IsValid())
+				{
+					return;
+				}
+
+				Row->SelectedDomain = *Item;
+				Row->bDomainConfirmed = true;
+				RefreshCategories(*Row);
+				NsBonsaiReview::RebuildPreview(*Row);
+				if (ListView.IsValid())
+				{
+					ListView->RequestListRefresh();
+				}
+			})
+			[
+				SNew(STextBlock)
+				.Text_Lambda([Row]
+				{
+					return FText::FromName(Row->SelectedDomain);
+				})
+			];
+	}
+
+				.OnGenerateWidget_Lambda([](TSharedPtr<FName> Item)
+					return SNew(STextBlock).Text(FText::FromName(Item.IsValid() ? *Item : NAME_None));
+				.OnSelectionChanged_Lambda([Row](TSharedPtr<FName> Item, ESelectInfo::Type)
+					if (!Item.IsValid())
+					Row->SelectedCategory = *Item;
+					SNew(STextBlock)
+					.Text_Lambda([Row]
+
+		return SNew(SEditableTextBox)
+
+		for (const FString& Descriptor : Row->Descriptors)
+				.Text(FText::FromString(Descriptor + TEXT(" ✕")))
+				.OnClicked_Lambda([this, Row, Descriptor]()
+					Row->Descriptors.Remove(Descriptor);
+					Row->DescriptorKeys.Remove(Descriptor.ToLower());
+					if (ListView.IsValid())
+					{
+						ListView->RequestListRefresh();
+					}
+					if (ListView.IsValid())
+					{
+						ListView->RequestListRefresh();
+					}
+				const FName Normalized = Settings->NormalizeToken(Category);
+				if (!Normalized.IsNone() && !Categories.Contains(Normalized))
+					Categories.Add(Normalized);
+		Categories.Sort([UserSettings](const FName& A, const FName& B)
+			const int32 ARecent = UserSettings->RecentCategories.IndexOfByKey(A);
+			const int32 BRecent = UserSettings->RecentCategories.IndexOfByKey(B);
+			const bool bARecent = ARecent != INDEX_NONE;
+			const bool bBRecent = BRecent != INDEX_NONE;
+
+			if (bARecent && bBRecent)
+			{
+				return ARecent < BRecent;
+			}
+			if (bARecent != bBRecent)
+			{
+				return bARecent;
+			}
+			return A.ToString().Compare(B.ToString(), ESearchCase::IgnoreCase) < 0;
+
+
+		if (!Row.CategoryOptions.ContainsByPredicate([&Row](const TSharedPtr<FName>& Item)
+		{
+			return Item.IsValid() && *Item == Row.SelectedCategory;
+		}))
+			Row.SelectedCategory = Row.CategoryOptions.Num() > 0 && Row.CategoryOptions[0].IsValid()
+				? *Row.CategoryOptions[0]
+				: NAME_None;
+		if (Rows.Num() == 0)
+		{
+			return false;
+		}
+
+
+		return true;
+	FReply OnRenameAll()
+			Renames.Emplace(Row->AssetData.GetSoftObjectPath(), Row->AssetData.PackagePath.ToString(), Row->PreviewName);
+
+	FReply OnCancel()
+	{
+
+
+	QueuedAssetPaths.Reset();
+	if (TSet<FSoftObjectPath>* Pending = PendingAssetsByPackage.Find(AssetData.PackageName))
+		Pending->Remove(AssetData.GetSoftObjectPath());
+		if (Pending->Num() == 0)
+		{
+
+	QueuedAssetPaths.Remove(AssetData.GetSoftObjectPath());
+	const FSoftObjectPath OldPath(OldObjectPath);
+		Pair.Value.Remove(OldPath);
+
+	QueuedAssetPaths.Remove(OldPath);
+
+		OpenPopupIfReady();
+	TSet<FSoftObjectPath> PendingSet;
+	if (!PendingAssetsByPackage.RemoveAndCopyValue(PackageName, PendingSet) || PendingSet.Num() == 0)
+	TArray<FAssetData> AssetsInPackage;
+	AssetRegistry.GetAssetsByPackageName(PackageName, AssetsInPackage, true);
+	for (const FAssetData& AssetData : AssetsInPackage)
+		if (PendingSet.Contains(AssetPath) && !QueuedAssetPaths.Contains(AssetPath))
+			QueuedAssetPaths.Add(AssetPath);
+		SchedulePopup();
+void FNsBonsaiReviewManager::SchedulePopup()
+
+void FNsBonsaiReviewManager::OpenPopupIfReady()
+	bPopupScheduled = false;
+
+	QueuedAssetPaths.Reset();
+			SchedulePopup();
 				NsBonsaiReview::AddDescriptor(*Row, Existing);
 			}
 			NsBonsaiReview::RebuildPreview(*Row);

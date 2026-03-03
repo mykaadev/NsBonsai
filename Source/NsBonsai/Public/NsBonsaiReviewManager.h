@@ -2,11 +2,9 @@
 
 #include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
-
-class FDelegateHandle;
-	TMap<FName, TSet<FSoftObjectPath>> PendingAssetsByPackage;
-	TSet<FSoftObjectPath> QueuedObjectPaths;
-#if WITH_EDITOR
+	void SchedulePopup();
+	void OpenPopupIfReady();
+	TSet<FSoftObjectPath> QueuedAssetPaths;
 class FNsBonsaiReviewManager
 {
 public:
