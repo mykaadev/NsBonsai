@@ -406,20 +406,20 @@ private:
 		if (ParentWindow.IsValid())
 		{
 			ParentWindow.Pin()->RequestDestroyWindow();
-		}
-		return FReply::Handled();
-	}
-
-	TWeakPtr<SWindow> ParentWindow;
-	TSharedPtr<SListView<TSharedPtr<NsBonsaiReview::FRowModel>>> ListView;
-	TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Rows;
-};
-
-void FNsBonsaiReviewManager::Startup()
+	PendingAssetsByPackage.FindOrAdd(AssetData.PackageName).Add(AssetData.GetSoftObjectPath());
+	if (TSet<FSoftObjectPath>* PendingSet = PendingAssetsByPackage.Find(AssetData.PackageName))
+		PendingSet->Remove(AssetData.GetSoftObjectPath());
+	QueuedObjectPaths.Remove(AssetData.GetSoftObjectPath());
+	const FSoftObjectPath OldObjectSoftPath(OldObjectPath);
+	for (TPair<FName, TSet<FSoftObjectPath>>& Pair : PendingAssetsByPackage)
+		Pair.Value.Remove(OldObjectSoftPath);
+	PendingAssetsByPackage.FindOrAdd(AssetData.PackageName).Add(AssetData.GetSoftObjectPath());
+	QueuedObjectPaths.Remove(OldObjectSoftPath);
 {
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-	AssetAddedHandle = AssetRegistry.OnAssetAdded().AddRaw(this, &FNsBonsaiReviewManager::OnAssetAdded);
+	TSet<FSoftObjectPath> PendingObjectPaths;
+		const FSoftObjectPath AssetPath = AssetData.GetSoftObjectPath();
+		if (PendingObjectPaths.Contains(AssetPath) && !QueuedObjectPaths.Contains(AssetPath))
+			QueuedObjectPaths.Add(AssetPath);
 	AssetRemovedHandle = AssetRegistry.OnAssetRemoved().AddRaw(this, &FNsBonsaiReviewManager::OnAssetRemoved);
 	AssetRenamedHandle = AssetRegistry.OnAssetRenamed().AddRaw(this, &FNsBonsaiReviewManager::OnAssetRenamed);
 	PackageSavedHandle = FCoreUObjectDelegates::OnPackageSavedWithContext.AddRaw(this, &FNsBonsaiReviewManager::OnPackageSaved);

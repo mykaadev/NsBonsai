@@ -4,8 +4,8 @@
 #include "CoreMinimal.h"
 
 class FDelegateHandle;
-struct FObjectPostSaveContext;
-
+	TMap<FName, TSet<FSoftObjectPath>> PendingAssetsByPackage;
+	TSet<FSoftObjectPath> QueuedObjectPaths;
 #if WITH_EDITOR
 class FNsBonsaiReviewManager
 {
