@@ -1,6 +1,7 @@
 #include "NsBonsaiSettings.h"
 
 #include "UObject/Class.h"
+#include "UObject/UObjectGlobals.h"
 
 UNsBonsaiSettings::UNsBonsaiSettings()
 	: JoinSeparator(TEXT("_"))
@@ -33,6 +34,34 @@ FName UNsBonsaiSettings::ResolveTypeTokenForClass(const UClass* InClass) const
 		if (const FName* FoundTypeToken = ClassToToken.Find(CurrentClass->GetClassPathName()))
 		{
 			return *FoundTypeToken;
+		}
+	}
+
+	return NAME_None;
+}
+
+FName UNsBonsaiSettings::ResolveTypeTokenForClassPath(const FTopLevelAssetPath& ClassPath) const
+{
+	if (!ClassPath.IsValid())
+	{
+		return NAME_None;
+	}
+
+	if (const UClass* AssetClass = FindObject<UClass>(nullptr, *ClassPath.ToString()))
+	{
+		return ResolveTypeTokenForClass(AssetClass);
+	}
+
+	if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *ClassPath.ToString()))
+	{
+		return ResolveTypeTokenForClass(LoadedClass);
+	}
+
+	for (const FNsBonsaiTypeRule& Rule : TypeRules)
+	{
+		if (Rule.ClassPath.GetAssetPath() == ClassPath)
+		{
+			return NormalizeToken(Rule.TypeToken);
 		}
 	}
 

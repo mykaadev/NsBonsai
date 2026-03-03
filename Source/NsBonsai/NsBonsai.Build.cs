@@ -38,6 +38,7 @@ public class NsBonsai : ModuleRules
 				"Slate",
 				"SlateCore",
 				"DeveloperSettings",
+				"AssetRegistry",
 			}
 			);
 		

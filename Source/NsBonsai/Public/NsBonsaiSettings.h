@@ -64,6 +64,7 @@ public:
 	bool bSortDescriptorsAlpha;
 
 	FName ResolveTypeTokenForClass(const UClass* InClass) const;
+	FName ResolveTypeTokenForClassPath(const FTopLevelAssetPath& ClassPath) const;
 	FName NormalizeToken(FName InToken) const;
 
 	virtual FName GetCategoryName() const override;
