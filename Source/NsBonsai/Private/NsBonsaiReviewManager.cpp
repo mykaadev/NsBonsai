@@ -388,6 +388,14 @@ private:
 		return CloseWindow();
 	}
 
+	// Use PackageSavedEvent for broad engine-version compatibility (older versions do not expose OnPackageSavedWithContext).
+		TickHandle.Reset();
+
+	PendingAssetsByPackage.Reset();
+	ReviewQueue.Reset();
+	QueuedObjectPaths.Reset();
+	bPopupScheduled = false;
+	bPopupOpen = false;
 	FReply OnCancelClicked()
 	{
 		return CloseWindow();
