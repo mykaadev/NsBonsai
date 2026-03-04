@@ -1,7 +1,6 @@
 #include "NsBonsaiReviewManager.h"
 
 #if WITH_EDITOR
-
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "Containers/Ticker.h"
@@ -12,10 +11,9 @@
 #include "NsBonsaiNameBuilder.h"
 #include "NsBonsaiSettings.h"
 #include "NsBonsaiUserSettings.h"
+#include "Styling/AppStyle.h"
 #include "UObject/ObjectSaveContext.h"
 #include "UObject/Package.h"
-
-#include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -26,7 +24,9 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SHeaderRow.h"
 #include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STableRow.h"
 
 namespace NsBonsaiReview
@@ -60,9 +60,6 @@ namespace NsBonsaiReview
 		FString AssetName;
 
 		FString PreviewName;
-
-		bool bConfirmed = false;
-		bool bIgnored = false;
 	};
 
 	static void RebuildPreview(FRowModel& Row)
@@ -78,26 +75,6 @@ namespace NsBonsaiReview
 
 		Row.PreviewName = FNsBonsaiNameBuilder::BuildFinalAssetName(BuildInput, *Settings);
 	}
-
-	static const FSlateBrush* StatusBrush(const FRowModel& Row)
-	{
-		if (Row.bIgnored)
-		{
-			return FAppStyle::Get().GetBrush("Icons.X");
-		}
-		if (Row.bConfirmed)
-		{
-			return FAppStyle::Get().GetBrush("Icons.Check");
-		}
-		return nullptr;
-	}
-
-	static FText StatusText(const FRowModel& Row)
-	{
-		if (Row.bIgnored) return FText::FromString(TEXT("Ignored"));
-		if (Row.bConfirmed) return FText::FromString(TEXT("Confirmed"));
-		return FText::FromString(TEXT("Pending"));
-	}
 }
 
 class SNsBonsaiReviewWindow final : public SCompoundWidget
@@ -105,12 +82,14 @@ class SNsBonsaiReviewWindow final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SNsBonsaiReviewWindow) {}
 		SLATE_ARGUMENT(TArray<FAssetData>, Assets)
+		SLATE_ARGUMENT(FNsBonsaiReviewManager*, Manager)
 		SLATE_ARGUMENT(TWeakPtr<SWindow>, ParentWindow)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
 		ParentWindow = InArgs._ParentWindow;
+		Manager = InArgs._Manager;
 		Settings = GetDefault<UNsBonsaiSettings>();
 		UserSettings = GetMutableDefault<UNsBonsaiUserSettings>();
 
@@ -142,7 +121,6 @@ public:
 			for (const FName D : Domains)
 			{
 				DomainOptions.Add(MakeShared<FName>(D));
-				DomainOptionByName.Add(D, DomainOptions.Last());
 			}
 		}
 
@@ -165,23 +143,11 @@ public:
 			+ SVerticalBox::Slot().AutoHeight().Padding(8)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Review newly added assets — choose Domain/Category, edit Asset Name, then Confirm or Ignore.")))
+				.Text(FText::FromString(TEXT("Review newly added assets — edit Domain/Category and Asset Name, then confirm (\u2713) or ignore (\u2717).")))
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(8)
 			[
-				SNew(SSplitter)
-				+ SSplitter::Slot().Value(0.33f)
-				[
-					BuildAssetListPanel()
-				]
-				+ SSplitter::Slot().Value(0.34f)
-				[
-					BuildDetailsPanel()
-				]
-				+ SSplitter::Slot().Value(0.33f)
-				[
-					BuildActionsPanel()
-				]
+				BuildCompactTable()
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(8)
 			[
@@ -191,17 +157,8 @@ public:
 					SNew(STextBlock)
 					.Text_Lambda([this]
 					{
-						const int32 Confirmed = CountConfirmed();
-						const int32 Ignored = CountIgnored();
-						return FText::FromString(FString::Printf(TEXT("Confirmed: %d   Ignored: %d   Total: %d"), Confirmed, Ignored, Rows.Num()));
+						return FText::FromString(FString::Printf(TEXT("Remaining: %d"), Rows.Num()));
 					})
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4)
-				[
-					SNew(SButton)
-					.Text(FText::FromString(TEXT("Rename Confirmed")))
-					.IsEnabled(this, &SNsBonsaiReviewWindow::CanRenameConfirmed)
-					.OnClicked(this, &SNsBonsaiReviewWindow::OnRenameConfirmedClicked)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(4)
 				[
@@ -214,349 +171,195 @@ public:
 	}
 
 private:
-	TSharedRef<SWidget> BuildAssetListPanel()
+	// Compact table-style UI
+	TSharedRef<SWidget> BuildCompactTable()
 	{
 		return SNew(SBorder)
-		.Padding(6)
+		.Padding(4)
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Assets")))
-			]
-			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(2)
-			[
-				SAssignNew(ListView, SListView<TSharedPtr<NsBonsaiReview::FRowModel>>)
-				.ListItemsSource(&Rows)
-				.SelectionMode(ESelectionMode::Multi)
-				.OnGenerateRow(this, &SNsBonsaiReviewWindow::OnGenerateRow)
-				.OnSelectionChanged(this, &SNsBonsaiReviewWindow::OnSelectionChanged)
-			]
+			SAssignNew(ListView, SListView<TSharedPtr<NsBonsaiReview::FRowModel>>)
+			.ListItemsSource(&Rows)
+			.SelectionMode(ESelectionMode::Multi)
+			.OnGenerateRow(this, &SNsBonsaiReviewWindow::OnGenerateCompactRow)
+			.HeaderRow
+			(
+				SNew(SHeaderRow)
+				+ SHeaderRow::Column(TEXT("Asset")).DefaultLabel(FText::FromString(TEXT("Asset"))).FillWidth(0.23f)
+				+ SHeaderRow::Column(TEXT("Type")).DefaultLabel(FText::FromString(TEXT("Type"))).FillWidth(0.07f)
+				+ SHeaderRow::Column(TEXT("Domain")).DefaultLabel(FText::FromString(TEXT("Domain"))).FillWidth(0.14f)
+				+ SHeaderRow::Column(TEXT("Category")).DefaultLabel(FText::FromString(TEXT("Category"))).FillWidth(0.14f)
+				+ SHeaderRow::Column(TEXT("AssetName")).DefaultLabel(FText::FromString(TEXT("Asset Name"))).FillWidth(0.20f)
+				+ SHeaderRow::Column(TEXT("Final")).DefaultLabel(FText::FromString(TEXT("Final Name"))).FillWidth(0.18f)
+				+ SHeaderRow::Column(TEXT("Ok")).DefaultLabel(FText::FromString(TEXT(""))).FixedWidth(28)
+				+ SHeaderRow::Column(TEXT("No")).DefaultLabel(FText::FromString(TEXT(""))).FixedWidth(28)
+			)
 		];
 	}
 
-	TSharedRef<SWidget> BuildDetailsPanel()
+	class SCompactRow final : public SMultiColumnTableRow<TSharedPtr<NsBonsaiReview::FRowModel>>
 	{
-		return SNew(SBorder)
-		.Padding(10)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Naming")))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(6)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Domain")))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				 SAssignNew(DomainCombo, SComboBox<TSharedPtr<FName>>)
-				.IsEnabled_Lambda([this]{ return SelectedRows.Num() > 0; })
-				.OptionsSource(&DomainOptions)
+	public:
+		SLATE_BEGIN_ARGS(SCompactRow) {}
+			SLATE_ARGUMENT(TSharedPtr<NsBonsaiReview::FRowModel>, Row)
+			SLATE_ARGUMENT(SNsBonsaiReviewWindow*, Owner)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTableView)
+		{
+			Row = InArgs._Row;
+			Owner = InArgs._Owner;
+			SMultiColumnTableRow<TSharedPtr<NsBonsaiReview::FRowModel>>::Construct(
+				FSuperRowType::FArguments().Padding(FMargin(2, 1)),
+				InOwnerTableView
+			);
+		}
+
+		virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override
+		{
+			if (!Row.IsValid() || !Owner)
+			{
+				return SNew(STextBlock);
+			}
+
+			if (ColumnName == TEXT("Asset"))
+			{
+				return SNew(STextBlock).Text(FText::FromString(Row->CurrentName));
+			}
+			if (ColumnName == TEXT("Type"))
+			{
+				const FName TypeToken = Owner->Settings->ResolveTypeTokenForClassPath(Row->AssetData.AssetClassPath);
+				return SNew(STextBlock).Text(FText::FromName(TypeToken));
+			}
+			if (ColumnName == TEXT("Domain"))
+			{
+				return SNew(SComboBox<TSharedPtr<FName>>)
+				.OptionsSource(&Owner->DomainOptions)
 				.OnGenerateWidget_Lambda([](TSharedPtr<FName> Name)
 				{
 					return SNew(STextBlock).Text(Name.IsValid() ? FText::FromName(*Name) : FText::GetEmpty());
 				})
-				.OnSelectionChanged(this, &SNsBonsaiReviewWindow::OnDomainPicked)
+				.OnSelectionChanged_Lambda([this](TSharedPtr<FName> NewSel, ESelectInfo::Type)
+				{
+					if (NewSel.IsValid())
+					{
+						Owner->ApplyDomain(Row, *NewSel);
+					}
+				})
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]
 					{
-						return GetDetailsDomainText();
+						return Row->SelectedDomain.IsNone() ? FText::FromString(TEXT("Domain")) : FText::FromName(Row->SelectedDomain);
 					})
-				]
-			]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(6)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Category")))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SAssignNew(CategoryCombo, SComboBox<TSharedPtr<FName>>)
-				.OptionsSource(&CategoryOptions)
-				.IsEnabled_Lambda([this]
-				{
-					return SelectedRows.Num() > 0 && !bDomainMixed && !GetCommonDomain().IsNone();
-				})
+				];
+			}
+			if (ColumnName == TEXT("Category"))
+			{
+				Owner->EnsureCategoryOptions(Row);
+				return SNew(SComboBox<TSharedPtr<FName>>)
+				.OptionsSource(&Owner->CategoryOptionsByRow.FindOrAdd(Row))
+				.IsEnabled_Lambda([this]{ return !Row->SelectedDomain.IsNone(); })
 				.OnGenerateWidget_Lambda([](TSharedPtr<FName> Name)
 				{
 					return SNew(STextBlock).Text(Name.IsValid() ? FText::FromName(*Name) : FText::GetEmpty());
 				})
-				.OnSelectionChanged(this, &SNsBonsaiReviewWindow::OnCategoryPicked)
+				.OnSelectionChanged_Lambda([this](TSharedPtr<FName> NewSel, ESelectInfo::Type)
+				{
+					if (NewSel.IsValid())
+					{
+						Owner->ApplyCategory(Row, *NewSel);
+					}
+				})
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]
 					{
-						return GetDetailsCategoryText();
+						return Row->SelectedCategory.IsNone() ? FText::FromString(TEXT("Category")) : FText::FromName(Row->SelectedCategory);
 					})
-				]
-			]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(6)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Asset Name")))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SAssignNew(AssetNameBox, SEditableTextBox)
-				.IsEnabled_Lambda([this]{ return SelectedRows.Num() == 1; })
-				.HintText_Lambda([this]
+				];
+			}
+			if (ColumnName == TEXT("AssetName"))
+			{
+				return SNew(SEditableTextBox)
+				.Text_Lambda([this]{ return FText::FromString(Row->AssetName); })
+				.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
 				{
-					return SelectedRows.Num() == 1
-						? FText::FromString(TEXT("Name part(s) before the variant"))
-						: FText::FromString(TEXT("Select one asset to edit Asset Name"));
-				})
-				.Text_Lambda([this]
-				{
-					if (SelectedRows.Num() == 1 && SelectedRows[0].IsValid())
-					{
-						return FText::FromString(SelectedRows[0]->AssetName);
-					}
-					return FText::GetEmpty();
-				})
-				.OnTextChanged(this, &SNsBonsaiReviewWindow::OnAssetNameChanged)
-			]
+					Owner->ApplyAssetName(Row, NewText.ToString());
+				});
+			}
+			if (ColumnName == TEXT("Final"))
+			{
+				return SNew(STextBlock)
+				.Text_Lambda([this]{ return FText::FromString(Row->PreviewName); })
+				.ColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f, 1.0f));
+			}
+			if (ColumnName == TEXT("Ok"))
+			{
+				return SNew(SButton)
+				.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+				.ContentPadding(FMargin(4, 2))
+				.ToolTipText(FText::FromString(TEXT("Confirm + Rename")))
+				.OnClicked_Lambda([this]{ return Owner->OnConfirmClicked(Row); })
+				[
+					SNew(SImage).Image(FAppStyle::Get().GetBrush("Icons.Check"))
+				];
+			}
+			if (ColumnName == TEXT("No"))
+			{
+				return SNew(SButton)
+				.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+				.ContentPadding(FMargin(4, 2))
+				.ToolTipText(FText::FromString(TEXT("Ignore")))
+				.OnClicked_Lambda([this]{ return Owner->OnIgnoreClicked(Row); })
+				[
+					SNew(SImage).Image(FAppStyle::Get().GetBrush("Icons.X"))
+				];
+			}
 
-			+ SVerticalBox::Slot().AutoHeight().Padding(8)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Tip: Multi-select assets on the left, then set Domain/Category once.")))
-				.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f, 1.0f))
-			]
-		];
+			return SNew(STextBlock);
+		}
+
+	private:
+		TSharedPtr<NsBonsaiReview::FRowModel> Row;
+		SNsBonsaiReviewWindow* Owner = nullptr;
+	};
+
+	TSharedRef<ITableRow> OnGenerateCompactRow(TSharedPtr<NsBonsaiReview::FRowModel> Row, const TSharedRef<STableViewBase>& OwnerTable)
+	{
+		return SNew(SCompactRow, OwnerTable)
+			.Row(Row)
+			.Owner(this);
 	}
 
-	TSharedRef<SWidget> BuildActionsPanel()
+	TArray<TSharedPtr<NsBonsaiReview::FRowModel>> GetSelectionOrSingle(const TSharedPtr<NsBonsaiReview::FRowModel>& FocusRow)
 	{
-		return SNew(SBorder)
-		.Padding(10)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Output")))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(8)
-			[
-				SNew(STextBlock)
-				.Text_Lambda([this]
-				{
-					if (SelectedRows.Num() == 0)
-					{
-						return FText::FromString(TEXT("Select assets to edit."));
-					}
-					if (SelectedRows.Num() > 1)
-					{
-						return FText::FromString(TEXT("Multiple assets selected."));
-					}
-					return FText::FromString(FString::Printf(TEXT("Preview: %s"), *SelectedRows[0]->PreviewName));
-				})
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(4)
-			[
-				SNew(STextBlock)
-				.Text_Lambda([this]
-				{
-					if (SelectedRows.Num() == 1)
-					{
-						return FText::FromString(FString::Printf(TEXT("Status: %s"), *NsBonsaiReview::StatusText(*SelectedRows[0]).ToString()));
-					}
-					return FText::GetEmpty();
-				})
-				.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f, 1.0f))
-			]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(10)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2)
-				[
-					SNew(SButton)
-					.Text(FText::FromString(TEXT("Confirm Selected")))
-					.IsEnabled_Lambda([this]{ return SelectedRows.Num() > 0; })
-					.OnClicked(this, &SNsBonsaiReviewWindow::OnConfirmSelectedClicked)
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2)
-				[
-					SNew(SButton)
-					.Text(FText::FromString(TEXT("Ignore Selected")))
-					.IsEnabled_Lambda([this]{ return SelectedRows.Num() > 0; })
-					.OnClicked(this, &SNsBonsaiReviewWindow::OnIgnoreSelectedClicked)
-				]
-			]
-			+ SVerticalBox::Slot().FillHeight(1.0f)
-			[
-				SNew(SSpacer)
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(2)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Confirm marks assets for renaming. Ignore skips them.")))
-				.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f, 1.0f))
-			]
-		];
-	}
-
-	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<NsBonsaiReview::FRowModel> Row, const TSharedRef<STableViewBase>& Owner)
-	{
-		return SNew(STableRow<TSharedPtr<NsBonsaiReview::FRowModel>>, Owner)
-		[
-			SNew(SBorder)
-			.Padding(6)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2)
-				[
-					SNew(SBox)
-					.WidthOverride(20)
-					.HeightOverride(20)
-					[
-						SNew(SImage)
-						.Image_Lambda([Row]
-						{
-							const FSlateBrush* Brush = NsBonsaiReview::StatusBrush(*Row);
-							return Brush;
-						})
-					]
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2)
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(1)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([Row]
-						{
-							return FText::FromString(FString::Printf(TEXT("%s"), *Row->CurrentName));
-						})
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(1)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([Row]
-						{
-							return FText::FromString(Row->PreviewName);
-						})
-						.ColorAndOpacity(FLinearColor(0.75f, 0.75f, 0.75f, 1.0f))
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(1)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([Row]
-						{
-							return NsBonsaiReview::StatusText(*Row);
-						})
-						.ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.6f, 1.0f))
-					]
-				]
-			]
-		];
-	}
-
-	void OnSelectionChanged(TSharedPtr<NsBonsaiReview::FRowModel>, ESelectInfo::Type)
-	{
-		SelectedRows.Reset();
+		TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Selection;
 		if (ListView.IsValid())
 		{
-			ListView->GetSelectedItems(SelectedRows);
+			ListView->GetSelectedItems(Selection);
 		}
-
-		SyncDetailsFromSelection();
+		if (Selection.Num() > 0 && Selection.Contains(FocusRow))
+		{
+			return Selection;
+		}
+		Selection.Reset();
+		Selection.Add(FocusRow);
+		return Selection;
 	}
 
-	FName GetCommonDomain() const
+	void EnsureCategoryOptions(const TSharedPtr<NsBonsaiReview::FRowModel>& Row)
 	{
-		if (SelectedRows.Num() == 0)
+		if (!Row.IsValid()) return;
+		TArray<TSharedPtr<FName>>& Options = CategoryOptionsByRow.FindOrAdd(Row);
+		Options.Reset();
+		if (Row->SelectedDomain.IsNone())
 		{
-			return NAME_None;
-		}
-		FName First = SelectedRows[0].IsValid() ? SelectedRows[0]->SelectedDomain : NAME_None;
-		for (int32 i = 1; i < SelectedRows.Num(); ++i)
-		{
-			if (!SelectedRows[i].IsValid() || SelectedRows[i]->SelectedDomain != First)
-			{
-				return NAME_None;
-			}
-		}
-		return First;
-	}
-
-	FName GetCommonCategory() const
-	{
-		if (SelectedRows.Num() == 0)
-		{
-			return NAME_None;
-		}
-		FName First = SelectedRows[0].IsValid() ? SelectedRows[0]->SelectedCategory : NAME_None;
-		for (int32 i = 1; i < SelectedRows.Num(); ++i)
-		{
-			if (!SelectedRows[i].IsValid() || SelectedRows[i]->SelectedCategory != First)
-			{
-				return NAME_None;
-			}
-		}
-		return First;
-	}
-
-	void SyncDetailsFromSelection()
-	{
-		bDomainMixed = false;
-		bCategoryMixed = false;
-
-		if (SelectedRows.Num() == 0)
-		{
-			CategoryOptions.Reset();
-			if (CategoryCombo.IsValid()) CategoryCombo->RefreshOptions();
 			return;
 		}
-
-		// Mixed detection
-		FName D0 = SelectedRows[0]->SelectedDomain;
-		for (int32 i = 1; i < SelectedRows.Num(); ++i)
-		{
-			if (SelectedRows[i]->SelectedDomain != D0)
-			{
-				bDomainMixed = true;
-				break;
-			}
-		}
-
-		FName C0 = SelectedRows[0]->SelectedCategory;
-		for (int32 i = 1; i < SelectedRows.Num(); ++i)
-		{
-			if (SelectedRows[i]->SelectedCategory != C0)
-			{
-				bCategoryMixed = true;
-				break;
-			}
-		}
-
-		RebuildCategoryOptions();
-	}
-
-	void RebuildCategoryOptions()
-	{
-		CategoryOptions.Reset();
-
-		if (SelectedRows.Num() == 0 || bDomainMixed)
-		{
-			if (CategoryCombo.IsValid()) CategoryCombo->RefreshOptions();
-			return;
-		}
-
-		const FName Domain = GetCommonDomain();
-		if (Domain.IsNone())
-		{
-			if (CategoryCombo.IsValid()) CategoryCombo->RefreshOptions();
-			return;
-		}
-
 		TArray<FName> Cats;
 		for (const FNsBonsaiDomainDef& DomainDef : Settings->Domains)
 		{
-			if (Settings->NormalizeToken(DomainDef.DomainToken) != Domain)
+			if (Settings->NormalizeToken(DomainDef.DomainToken) != Row->SelectedDomain)
 			{
 				continue;
 			}
@@ -569,7 +372,6 @@ private:
 				}
 			}
 		}
-
 		Cats.Sort([this](const FName& L, const FName& R)
 		{
 			const int32 Li = UserSettings->RecentCategories.IndexOfByKey(L);
@@ -580,186 +382,99 @@ private:
 			if (bL != bR) return bL;
 			return L.ToString().Compare(R.ToString(), ESearchCase::IgnoreCase) < 0;
 		});
-
 		for (const FName C : Cats)
 		{
-			CategoryOptions.Add(MakeShared<FName>(C));
-		}
-
-		if (CategoryCombo.IsValid())
-		{
-			CategoryCombo->RefreshOptions();
+			Options.Add(MakeShared<FName>(C));
 		}
 	}
 
-	FText GetDetailsDomainText() const
+	void ApplyDomain(const TSharedPtr<NsBonsaiReview::FRowModel>& FocusRow, const FName Domain)
 	{
-		if (SelectedRows.Num() == 0)
-		{
-			return FText::FromString(TEXT("Select asset(s)"));
-		}
-		if (bDomainMixed)
-		{
-			return FText::FromString(TEXT("— Mixed —"));
-		}
-		const FName D = GetCommonDomain();
-		return D.IsNone() ? FText::FromString(TEXT("Select Domain")) : FText::FromName(D);
-	}
-
-	FText GetDetailsCategoryText() const
-	{
-		if (SelectedRows.Num() == 0)
-		{
-			return FText::FromString(TEXT("Select asset(s)"));
-		}
-		if (bDomainMixed)
-		{
-			return FText::FromString(TEXT("— Mixed —"));
-		}
-		if (bCategoryMixed)
-		{
-			return FText::FromString(TEXT("— Mixed —"));
-		}
-		const FName C = GetCommonCategory();
-		return C.IsNone() ? FText::FromString(TEXT("Select Category")) : FText::FromName(C);
-	}
-
-	void OnDomainPicked(TSharedPtr<FName> NewSelection, ESelectInfo::Type)
-	{
-		if (!NewSelection.IsValid()) return;
-		const FName Domain = *NewSelection;
-
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : SelectedRows)
+		const TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+		for (const auto& Row : Targets)
 		{
 			if (!Row.IsValid()) continue;
 			Row->SelectedDomain = Domain;
-			// Reset category if it's not in this domain.
 			Row->SelectedCategory = NAME_None;
-			Row->bConfirmed = false;
-			Row->bIgnored = false;
+			EnsureCategoryOptions(Row);
+			// Auto-pick first category for convenience.
+			if (const TArray<TSharedPtr<FName>>* Opts = CategoryOptionsByRow.Find(Row))
+			{
+				if (Opts->Num() > 0)
+				{
+					Row->SelectedCategory = *(*Opts)[0];
+				}
+			}
 			NsBonsaiReview::RebuildPreview(*Row);
 		}
-
-		SyncDetailsFromSelection();
 		RequestRefresh();
 	}
 
-	void OnCategoryPicked(TSharedPtr<FName> NewSelection, ESelectInfo::Type)
+	void ApplyCategory(const TSharedPtr<NsBonsaiReview::FRowModel>& FocusRow, const FName Category)
 	{
-		if (!NewSelection.IsValid()) return;
-		const FName Category = *NewSelection;
-
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : SelectedRows)
+		const TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+		for (const auto& Row : Targets)
 		{
 			if (!Row.IsValid()) continue;
 			Row->SelectedCategory = Category;
-			Row->bConfirmed = false;
-			Row->bIgnored = false;
 			NsBonsaiReview::RebuildPreview(*Row);
 		}
-
-		SyncDetailsFromSelection();
 		RequestRefresh();
 	}
 
-	void OnAssetNameChanged(const FText& NewText)
+	void ApplyAssetName(const TSharedPtr<NsBonsaiReview::FRowModel>& Row, const FString& NewName)
 	{
-		if (SelectedRows.Num() != 1 || !SelectedRows[0].IsValid())
-		{
-			return;
-		}
-		SelectedRows[0]->AssetName = NewText.ToString();
-		SelectedRows[0]->bConfirmed = false;
-		SelectedRows[0]->bIgnored = false;
-		NsBonsaiReview::RebuildPreview(*SelectedRows[0]);
+		if (!Row.IsValid()) return;
+		Row->AssetName = NewName;
+		NsBonsaiReview::RebuildPreview(*Row);
 		RequestRefresh();
 	}
 
-	FReply OnConfirmSelectedClicked()
+	FReply OnIgnoreClicked(const TSharedPtr<NsBonsaiReview::FRowModel>& FocusRow)
 	{
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : SelectedRows)
+		const TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+		for (const auto& Row : Targets)
 		{
 			if (!Row.IsValid()) continue;
-
-			if (Row->SelectedDomain.IsNone() || Row->SelectedCategory.IsNone())
+			if (Manager)
 			{
-				// Leave as pending if incomplete.
-				continue;
+				Manager->MarkResolved(Row->AssetData.GetSoftObjectPath());
 			}
-
-			Row->bConfirmed = true;
-			Row->bIgnored = false;
+			Rows.Remove(Row);
+			CategoryOptionsByRow.Remove(Row);
 		}
-
+		if (ListView.IsValid())
+		{
+			ListView->ClearSelection();
+		}
 		RequestRefresh();
+		if (Rows.Num() == 0)
+		{
+			return CloseWindow();
+		}
 		return FReply::Handled();
 	}
 
-	FReply OnIgnoreSelectedClicked()
+	FReply OnConfirmClicked(const TSharedPtr<NsBonsaiReview::FRowModel>& FocusRow)
 	{
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : SelectedRows)
+		// Validate required fields
+		const TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+		for (const auto& Row : Targets)
 		{
-			if (!Row.IsValid()) continue;
-			Row->bIgnored = true;
-			Row->bConfirmed = false;
-		}
-		RequestRefresh();
-		return FReply::Handled();
-	}
-
-	bool CanRenameConfirmed() const
-	{
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : Rows)
-		{
-			if (Row.IsValid() && Row->bConfirmed && !Row->bIgnored)
+			if (!Row.IsValid() || Row->SelectedDomain.IsNone() || Row->SelectedCategory.IsNone())
 			{
-				return true;
+				return FReply::Handled();
 			}
 		}
-		return false;
-	}
 
-	int32 CountConfirmed() const
-	{
-		int32 N = 0;
-		for (const auto& Row : Rows)
-		{
-			if (Row.IsValid() && Row->bConfirmed && !Row->bIgnored) ++N;
-		}
-		return N;
-	}
-
-	int32 CountIgnored() const
-	{
-		int32 N = 0;
-		for (const auto& Row : Rows)
-		{
-			if (Row.IsValid() && Row->bIgnored) ++N;
-		}
-		return N;
-	}
-
-	FReply OnRenameConfirmedClicked()
-	{
 		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
 		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-
 		TArray<FAssetRenameData> Renames;
 		TSet<FString> ReservedObjectPaths;
 
-		for (const TSharedPtr<NsBonsaiReview::FRowModel>& Row : Rows)
+		for (const auto& Row : Targets)
 		{
-			if (!Row.IsValid() || !Row->bConfirmed || Row->bIgnored)
-			{
-				continue;
-			}
-
-			// Require valid taxonomy
-			if (Row->SelectedDomain.IsNone() || Row->SelectedCategory.IsNone())
-			{
-				continue;
-			}
-
+			if (!Row.IsValid()) continue;
 			const FString PackagePath = Row->AssetData.PackagePath.ToString();
 			const FSoftObjectPath OldPath = Row->AssetData.GetSoftObjectPath();
 
@@ -775,20 +490,17 @@ private:
 				continue;
 			}
 
-			// Allocate collision-safe variant
 			FString FinalName;
 			for (int32 VariantIndex = 0; VariantIndex < 26 * 26; ++VariantIndex)
 			{
 				const FString Variant = NsBonsaiReview::VariantFromIndex(VariantIndex);
 				BuildInput.VariantToken = Variant;
 				FinalName = FNsBonsaiNameBuilder::BuildFinalAssetName(BuildInput, *Settings);
-
 				const FString NewObjectPathString = NsBonsaiReview::MakeObjectPathString(PackagePath, FinalName);
 				if (ReservedObjectPaths.Contains(NewObjectPathString))
 				{
 					continue;
 				}
-
 				const FAssetData Existing = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(NewObjectPathString), /*bIncludeOnlyOnDiskAssets*/ false);
 				if (!Existing.IsValid())
 				{
@@ -796,14 +508,12 @@ private:
 					break;
 				}
 			}
-
 			if (FinalName.IsEmpty())
 			{
 				continue;
 			}
 
-			const FString NewObjectPathString = NsBonsaiReview::MakeObjectPathString(PackagePath, FinalName);
-			const FSoftObjectPath NewPath(NewObjectPathString);
+			const FSoftObjectPath NewPath(NsBonsaiReview::MakeObjectPathString(PackagePath, FinalName));
 			Renames.Emplace(OldPath, NewPath, /*bOnlyFixSoftReferences*/ false, /*bGenerateRedirectors*/ true);
 
 			UserSettings->TouchDomain(Row->SelectedDomain);
@@ -811,8 +521,34 @@ private:
 		}
 
 		UserSettings->Save();
+		if (Manager)
+		{
+			Manager->SetApplyingRename(true);
+		}
 		AssetToolsModule.Get().RenameAssets(Renames);
-		return CloseWindow();
+		// Do not disable immediately; manager has a short cooldown to absorb late callbacks.
+
+		// Remove rows after rename
+		for (const auto& Row : Targets)
+		{
+			if (!Row.IsValid()) continue;
+			if (Manager)
+			{
+				Manager->MarkResolved(Row->AssetData.GetSoftObjectPath());
+			}
+			Rows.Remove(Row);
+			CategoryOptionsByRow.Remove(Row);
+		}
+		if (ListView.IsValid())
+		{
+			ListView->ClearSelection();
+		}
+		RequestRefresh();
+		if (Rows.Num() == 0)
+		{
+			return CloseWindow();
+		}
+		return FReply::Handled();
 	}
 
 	FReply OnCancelClicked()
@@ -839,25 +575,15 @@ private:
 
 private:
 	TWeakPtr<SWindow> ParentWindow;
+	FNsBonsaiReviewManager* Manager = nullptr;
 	const UNsBonsaiSettings* Settings = nullptr;
 	UNsBonsaiUserSettings* UserSettings = nullptr;
 
 	TArray<TSharedPtr<NsBonsaiReview::FRowModel>> Rows;
-	TArray<TSharedPtr<NsBonsaiReview::FRowModel>> SelectedRows;
-
 	TSharedPtr<SListView<TSharedPtr<NsBonsaiReview::FRowModel>>> ListView;
 
 	TArray<TSharedPtr<FName>> DomainOptions;
-	TMap<FName, TSharedPtr<FName>> DomainOptionByName;
-
-	TArray<TSharedPtr<FName>> CategoryOptions;
-
-	TSharedPtr<SComboBox<TSharedPtr<FName>>> DomainCombo;
-	TSharedPtr<SComboBox<TSharedPtr<FName>>> CategoryCombo;
-	TSharedPtr<SEditableTextBox> AssetNameBox;
-
-	bool bDomainMixed = false;
-	bool bCategoryMixed = false;
+	TMap<TSharedPtr<NsBonsaiReview::FRowModel>, TArray<TSharedPtr<FName>>> CategoryOptionsByRow;
 };
 
 void FNsBonsaiReviewManager::Startup()
@@ -889,11 +615,19 @@ void FNsBonsaiReviewManager::Shutdown()
 
 void FNsBonsaiReviewManager::OnAssetAdded(const FAssetData& AssetData)
 {
+	if (IsApplyingRename())
+	{
+		return;
+	}
 	PendingAssetsByPackage.FindOrAdd(AssetData.PackageName).Add(AssetData.GetSoftObjectPath());
 }
 
 void FNsBonsaiReviewManager::OnAssetRemoved(const FAssetData& AssetData)
 {
+	if (IsApplyingRename())
+	{
+		return;
+	}
 	const FSoftObjectPath Path = AssetData.GetSoftObjectPath();
 
 	if (TSet<FSoftObjectPath>* PendingSet = PendingAssetsByPackage.Find(AssetData.PackageName))
@@ -910,6 +644,10 @@ void FNsBonsaiReviewManager::OnAssetRemoved(const FAssetData& AssetData)
 
 void FNsBonsaiReviewManager::OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath)
 {
+	if (IsApplyingRename())
+	{
+		return;
+	}
 	const FSoftObjectPath OldPath(OldObjectPath);
 
 	for (TPair<FName, TSet<FSoftObjectPath>>& Pair : PendingAssetsByPackage)
@@ -922,11 +660,12 @@ void FNsBonsaiReviewManager::OnAssetRenamed(const FAssetData& AssetData, const F
 	QueuedObjectPaths.Remove(OldPath);
 }
 
-void FNsBonsaiReviewManager::OnPackageSaved(
-	const FString& PackageFileName,
-	UPackage* Package,
-	FObjectPostSaveContext SaveContext)
+void FNsBonsaiReviewManager::OnPackageSaved(const FString& PackageFileName, UPackage* Package, FObjectPostSaveContext SaveContext)
 {
+	if (IsApplyingRename())
+	{
+		return;
+	}
 	if (!Package)
 	{
 		return;
@@ -936,6 +675,12 @@ void FNsBonsaiReviewManager::OnPackageSaved(
 
 bool FNsBonsaiReviewManager::Tick(float)
 {
+	// Cooldown for rename guard (handles late registry/save callbacks).
+	if (bApplyingRename && FPlatformTime::Seconds() >= ApplyingRenameCooldownUntil)
+	{
+		bApplyingRename = false;
+	}
+
 	if (bPopupScheduled && !bPopupOpen && FPlatformTime::Seconds() >= PopupOpenAtTime)
 	{
 		bPopupScheduled = false;
@@ -991,16 +736,28 @@ void FNsBonsaiReviewManager::OpenReviewPopup()
 	bPopupOpen = true;
 	TArray<FAssetData> AssetsToReview = MoveTemp(ReviewQueue);
 	ReviewQueue.Reset();
-	QueuedObjectPaths.Reset();
+
+	// Track what this window is responsible for so we can release unresolved items on close.
+	TSet<FSoftObjectPath> WindowObjectPaths;
+	for (const FAssetData& AD : AssetsToReview)
+	{
+		WindowObjectPaths.Add(AD.GetSoftObjectPath());
+	}
 
 	TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(FText::FromString(TEXT("NsBonsai Asset Review")))
-		.ClientSize(FVector2D(1200, 720))
+		.ClientSize(FVector2D(1200, 420))
 		.SupportsMinimize(true)
 		.SupportsMaximize(true);
 
-	Window->SetOnWindowClosed(FOnWindowClosed::CreateLambda([this](const TSharedRef<SWindow>&)
+	Window->SetOnWindowClosed(FOnWindowClosed::CreateLambda([this, WindowObjectPaths](const TSharedRef<SWindow>&)
 	{
+		// Release anything that wasn't explicitly resolved (confirm/ignore) so it can be queued again later.
+		for (const FSoftObjectPath& Path : WindowObjectPaths)
+		{
+			QueuedObjectPaths.Remove(Path);
+		}
+
 		bPopupOpen = false;
 		if (ReviewQueue.Num() > 0)
 		{
@@ -1011,10 +768,10 @@ void FNsBonsaiReviewManager::OpenReviewPopup()
 	Window->SetContent(
 		SNew(SNsBonsaiReviewWindow)
 		.Assets(AssetsToReview)
+		.Manager(this)
 		.ParentWindow(Window)
 	);
 
 	FSlateApplication::Get().AddWindow(Window);
 }
-
 #endif

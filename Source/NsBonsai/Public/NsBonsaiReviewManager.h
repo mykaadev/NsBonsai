@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/PlatformTime.h"
 
 #if WITH_EDITOR
 
@@ -16,6 +17,22 @@ class NSBONSAI_API FNsBonsaiReviewManager
 public:
 	void Startup();
 	void Shutdown();
+
+	// Guard against re-queueing assets while we are performing plugin-driven renames.
+	void SetApplyingRename(bool bInApplyingRename)
+	{
+		bApplyingRename = bInApplyingRename;
+		if (bApplyingRename)
+		{
+			// Renames can trigger registry/save callbacks slightly after the rename returns.
+			// Keep the guard enabled briefly to avoid re-queuing.
+			ApplyingRenameCooldownUntil = FPlatformTime::Seconds() + 1.0;
+		}
+	}
+	bool IsApplyingRename() const { return bApplyingRename; }
+
+	// Called by the review UI when an item is confirmed/ignored so it doesn't reappear.
+	void MarkResolved(const FSoftObjectPath& ObjectPath) { QueuedObjectPaths.Remove(ObjectPath); }
 
 private:
 	void OnAssetAdded(const FAssetData& AssetData);
@@ -41,6 +58,8 @@ private:
 	double PopupOpenAtTime = 0.0;
 	bool bPopupScheduled = false;
 	bool bPopupOpen = false;
+	bool bApplyingRename = false;
+	double ApplyingRenameCooldownUntil = 0.0;
 };
 
 #endif // WITH_EDITOR
