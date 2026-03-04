@@ -17,14 +17,10 @@ public:
 	TArray<FName> RecentCategories;
 
 	UPROPERTY(Config)
-	TArray<FString> RecentDescriptors;
-
-	UPROPERTY(Config)
 	int32 MaxRecentTokens = 20;
 
 	void TouchDomain(FName DomainToken);
 	void TouchCategory(FName CategoryToken);
-	void TouchDescriptor(const FString& DescriptorToken);
 	void Save();
 
 private:

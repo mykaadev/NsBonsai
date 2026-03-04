@@ -57,37 +57,6 @@ namespace NsBonsaiAssetEvaluator
 			return Left.ToString().Compare(Right.ToString(), ESearchCase::IgnoreCase) < 0;
 		});
 	}
-
-	void SortStringsRecentsThenAlpha(TArray<FString>& Tokens, const TArray<FString>& Recents)
-	{
-		Tokens.Sort([&Recents](const FString& Left, const FString& Right)
-		{
-			const int32 LeftIdx = Recents.IndexOfByPredicate([&Left](const FString& Value)
-			{
-				return Value.Equals(Left, ESearchCase::IgnoreCase);
-			});
-
-			const int32 RightIdx = Recents.IndexOfByPredicate([&Right](const FString& Value)
-			{
-				return Value.Equals(Right, ESearchCase::IgnoreCase);
-			});
-
-			const bool bLeftRecent = LeftIdx != INDEX_NONE;
-			const bool bRightRecent = RightIdx != INDEX_NONE;
-
-			if (bLeftRecent && bRightRecent)
-			{
-				return LeftIdx < RightIdx;
-			}
-
-			if (bLeftRecent != bRightRecent)
-			{
-				return bLeftRecent;
-			}
-
-			return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
-		});
-	}
 }
 
 FNsBonsaiEvaluationResult FNsBonsaiAssetEvaluator::Evaluate(const FAssetData& AssetData, const UNsBonsaiSettings& Settings, const UNsBonsaiUserSettings& UserSettings)
@@ -97,7 +66,7 @@ FNsBonsaiEvaluationResult FNsBonsaiAssetEvaluator::Evaluate(const FAssetData& As
 	Result.TypeToken = Settings.ResolveTypeTokenForClassPath(AssetData.AssetClassPath);
 
 	const FNsBonsaiParsedName ParsedName = FNsBonsaiNameBuilder::ParseExistingAssetName(AssetData.AssetName.ToString(), Settings);
-	Result.ExistingDescriptors = FNsBonsaiNameBuilder::SanitizeDescriptors(ParsedName.ExistingDescriptors, Settings);
+	Result.ExistingAssetName = ParsedName.ExistingAssetName;
 
 	TArray<FName> AllDomains;
 	TSet<FName> SeenDomains;
@@ -142,24 +111,7 @@ FNsBonsaiEvaluationResult FNsBonsaiAssetEvaluator::Evaluate(const FAssetData& As
 		Result.PreselectedCategory = Result.CategoryCandidates[0];
 	}
 
-	TArray<FString> Recents = FNsBonsaiNameBuilder::SanitizeDescriptors(UserSettings.RecentDescriptors, Settings);
-	TSet<FString> ExistingKeys;
-	for (const FString& Existing : Result.ExistingDescriptors)
-	{
-		ExistingKeys.Add(Existing.ToLower());
-	}
-
-	for (const FString& Recent : Recents)
-	{
-		if (!ExistingKeys.Contains(Recent.ToLower()))
-		{
-			Result.RecentDescriptorChips.Add(Recent);
-		}
-	}
-
-	NsBonsaiAssetEvaluator::SortStringsRecentsThenAlpha(Result.RecentDescriptorChips, Recents);
 	Result.bRequireDomainConfirmation = true;
 	Result.bRequireCategoryConfirmation = true;
-
 	return Result;
 }

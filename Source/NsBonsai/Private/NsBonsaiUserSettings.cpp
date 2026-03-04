@@ -18,14 +18,6 @@ void UNsBonsaiUserSettings::TouchCategory(FName CategoryToken)
 	}
 }
 
-void UNsBonsaiUserSettings::TouchDescriptor(const FString& DescriptorToken)
-{
-	if (!DescriptorToken.IsEmpty())
-	{
-		TouchRecent(RecentDescriptors, DescriptorToken);
-	}
-}
-
 void UNsBonsaiUserSettings::Save()
 {
 	SaveConfig();

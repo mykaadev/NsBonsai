@@ -1,11 +1,17 @@
 #pragma once
 
-#include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
-	void SchedulePopup();
-	void OpenPopupIfReady();
-	TSet<FSoftObjectPath> QueuedAssetPaths;
-class FNsBonsaiReviewManager
+
+#if WITH_EDITOR
+
+#include "AssetRegistry/AssetData.h"
+#include "Containers/Ticker.h"
+#include "UObject/ObjectSaveContext.h"
+#include "UObject/SoftObjectPath.h"
+
+class UPackage;
+
+class NSBONSAI_API FNsBonsaiReviewManager
 {
 public:
 	void Startup();
@@ -15,25 +21,26 @@ private:
 	void OnAssetAdded(const FAssetData& AssetData);
 	void OnAssetRemoved(const FAssetData& AssetData);
 	void OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath);
-	void OnPackageSaved(const FString& PackageFileName, UPackage* Package, const FObjectPostSaveContext& ObjectSaveContext);
+	void OnPackageSaved(const FString& PackageFileName, UPackage* Package, FObjectPostSaveContext SaveContext);
 	bool Tick(float DeltaTime);
 
 	void EnqueuePackageAssets(FName PackageName);
 	void RequestPopupDebounced();
 	void OpenReviewPopup();
 
-	TMap<FName, TSet<FName>> PendingAssetsByPackage;
+	TMap<FName, TSet<FSoftObjectPath>> PendingAssetsByPackage;
 	TArray<FAssetData> ReviewQueue;
-	TSet<FName> QueuedObjectPaths;
+	TSet<FSoftObjectPath> QueuedObjectPaths;
 
 	FDelegateHandle AssetAddedHandle;
 	FDelegateHandle AssetRemovedHandle;
 	FDelegateHandle AssetRenamedHandle;
 	FDelegateHandle PackageSavedHandle;
-	FDelegateHandle TickHandle;
+	FTSTicker::FDelegateHandle TickHandle;
 
 	double PopupOpenAtTime = 0.0;
 	bool bPopupScheduled = false;
 	bool bPopupOpen = false;
 };
-#endif
+
+#endif // WITH_EDITOR

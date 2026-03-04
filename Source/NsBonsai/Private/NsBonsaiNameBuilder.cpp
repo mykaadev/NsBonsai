@@ -6,7 +6,11 @@
 
 namespace NsBonsaiNameBuilder
 {
-	FString SanitizeFreeFormToken(const FString& InValue)
+	// Keep user-typed/captured asset name fairly intact:
+	// - remove non-alnum chars
+	// - preserve existing letter casing
+	// - trim whitespace
+	FString SanitizeNamePartPreserveCase(const FString& InValue)
 	{
 		FString Trimmed = InValue;
 		Trimmed.TrimStartAndEndInline();
@@ -14,25 +18,11 @@ namespace NsBonsaiNameBuilder
 		FString Sanitized;
 		Sanitized.Reserve(Trimmed.Len());
 
-		bool bUppercaseNext = true;
 		for (TCHAR Character : Trimmed)
 		{
 			if (FChar::IsAlnum(Character))
 			{
-				if (FChar::IsDigit(Character))
-				{
-					Sanitized.AppendChar(Character);
-					bUppercaseNext = true;
-				}
-				else
-				{
-					Sanitized.AppendChar(bUppercaseNext ? FChar::ToUpper(Character) : FChar::ToLower(Character));
-					bUppercaseNext = false;
-				}
-			}
-			else
-			{
-				bUppercaseNext = true;
+				Sanitized.AppendChar(Character);
 			}
 		}
 
@@ -131,6 +121,8 @@ FNsBonsaiParsedName FNsBonsaiNameBuilder::ParseExistingAssetName(const FString& 
 		}
 	}
 
+	TArray<FString> AssetNameParts;
+
 	for (const FString& Part : Parts)
 	{
 		const FName NormalizedPart = Settings.NormalizeToken(FName(*Part));
@@ -167,54 +159,51 @@ FNsBonsaiParsedName FNsBonsaiNameBuilder::ParseExistingAssetName(const FString& 
 			}
 		}
 
-		Parsed.ExistingDescriptors.Add(Part);
+		AssetNameParts.Add(Part);
 	}
 
+	Parsed.ExistingAssetName = FString::Join(AssetNameParts, *Separator);
 	return Parsed;
 }
 
-TArray<FString> FNsBonsaiNameBuilder::SanitizeDescriptors(const TArray<FString>& InDescriptors, const UNsBonsaiSettings& Settings)
+TArray<FString> FNsBonsaiNameBuilder::SanitizeAssetNameParts(const FString& InAssetName, const UNsBonsaiSettings& Settings)
 {
-	TArray<FString> SanitizedDescriptors;
-	TSet<FString> SeenDescriptorsLower;
+	TArray<FString> Parts;
+	const FString Separator = Settings.JoinSeparator.IsEmpty() ? TEXT("_") : Settings.JoinSeparator;
+	InAssetName.ParseIntoArray(Parts, *Separator, true);
 
-	for (const FString& Descriptor : InDescriptors)
+	TArray<FString> Sanitized;
+	Sanitized.Reserve(Parts.Num());
+
+	for (const FString& Part : Parts)
 	{
-		const FString SanitizedDescriptor = NsBonsaiNameBuilder::SanitizeFreeFormToken(Descriptor);
-		if (SanitizedDescriptor.IsEmpty())
+		FString Clean = NsBonsaiNameBuilder::SanitizeNamePartPreserveCase(Part);
+		if (Clean.IsEmpty())
 		{
 			continue;
 		}
 
-		FString NormalizedDescriptor = Settings.NormalizeToken(FName(*SanitizedDescriptor)).ToString();
-		if (NormalizedDescriptor.IsEmpty())
-		{
-			continue;
-		}
+		// Normalize if it matches any alias rule.
+		const FName Normalized = Settings.NormalizeToken(FName(*Clean));
+		Clean = Normalized.IsNone() ? Clean : Normalized.ToString();
 
-		const FString DescriptorKey = NormalizedDescriptor.ToLower();
-		if (!SeenDescriptorsLower.Contains(DescriptorKey))
-		{
-			SeenDescriptorsLower.Add(DescriptorKey);
-			SanitizedDescriptors.Add(NormalizedDescriptor);
-		}
+		Sanitized.Add(Clean);
 	}
 
 	if (Settings.bSortDescriptorsAlpha)
 	{
-		Algo::Sort(SanitizedDescriptors, [](const FString& Left, const FString& Right)
+		Algo::Sort(Sanitized, [](const FString& L, const FString& R)
 		{
-			return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
+			return L.Compare(R, ESearchCase::IgnoreCase) < 0;
 		});
 	}
 
-	return SanitizedDescriptors;
+	return Sanitized;
 }
 
-FString FNsBonsaiNameBuilder::BuildFinalAssetName(const FNsBonsaiNameBuildInput& Input, const UNsBonsaiSettings& Settings)
+FString FNsBonsaiNameBuilder::BuildBaseAssetName(const FNsBonsaiNameBuildInput& Input, const UNsBonsaiSettings& Settings)
 {
 	TArray<FString> NameParts;
-	NameParts.Reserve(4 + Input.Descriptors.Num());
 
 	const FName TypeToken = Settings.NormalizeToken(Input.TypeToken);
 	const FName DomainToken = Settings.NormalizeToken(Input.DomainToken);
@@ -224,20 +213,26 @@ FString FNsBonsaiNameBuilder::BuildFinalAssetName(const FNsBonsaiNameBuildInput&
 	{
 		NameParts.Add(TypeToken.ToString());
 	}
-
 	if (!DomainToken.IsNone())
 	{
 		NameParts.Add(DomainToken.ToString());
 	}
-
 	if (!CategoryToken.IsNone())
 	{
 		NameParts.Add(CategoryToken.ToString());
 	}
 
-	NameParts.Append(SanitizeDescriptors(Input.Descriptors, Settings));
-	NameParts.Add(SanitizeVariantToken(Input.VariantToken));
+	NameParts.Append(SanitizeAssetNameParts(Input.AssetName, Settings));
 
 	const FString Separator = Settings.JoinSeparator.IsEmpty() ? TEXT("_") : Settings.JoinSeparator;
 	return FString::Join(NameParts, *Separator);
+}
+
+FString FNsBonsaiNameBuilder::BuildFinalAssetName(const FNsBonsaiNameBuildInput& Input, const UNsBonsaiSettings& Settings)
+{
+	const FString Separator = Settings.JoinSeparator.IsEmpty() ? TEXT("_") : Settings.JoinSeparator;
+	const FString Base = BuildBaseAssetName(Input, Settings);
+	return Base.IsEmpty()
+		? SanitizeVariantToken(Input.VariantToken)
+		: (Base + Separator + SanitizeVariantToken(Input.VariantToken));
 }

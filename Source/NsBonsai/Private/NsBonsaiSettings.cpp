@@ -5,7 +5,7 @@
 
 UNsBonsaiSettings::UNsBonsaiSettings()
 	: JoinSeparator(TEXT("_"))
-	, bSortDescriptorsAlpha(true)
+	, bSortDescriptorsAlpha(false)
 {
 }
 

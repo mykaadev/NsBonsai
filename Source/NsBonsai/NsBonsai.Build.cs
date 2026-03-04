@@ -39,6 +39,7 @@ public class NsBonsai : ModuleRules
 				"SlateCore",
 				"DeveloperSettings",
 				"AssetRegistry",
+				"InputCore"
 			}
 			);
 		

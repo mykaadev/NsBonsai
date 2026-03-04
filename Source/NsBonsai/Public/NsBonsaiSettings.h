@@ -61,7 +61,7 @@ public:
 	FString JoinSeparator;
 
 	UPROPERTY(EditAnywhere, Config, Category = "Format")
-	bool bSortDescriptorsAlpha;
+	bool bSortDescriptorsAlpha;// If true, alphabetically sorts AssetName parts split by JoinSeparator (usually _).
 
 	FName ResolveTypeTokenForClass(const UClass* InClass) const;
 	FName ResolveTypeTokenForClassPath(const FTopLevelAssetPath& ClassPath) const;

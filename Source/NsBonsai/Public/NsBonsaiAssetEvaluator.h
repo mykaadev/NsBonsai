@@ -28,11 +28,9 @@ struct FNsBonsaiEvaluationResult
 	UPROPERTY()
 	FName PreselectedCategory;
 
+	// Prefill for the user-editable AssetName field.
 	UPROPERTY()
-	TArray<FString> ExistingDescriptors;
-
-	UPROPERTY()
-	TArray<FString> RecentDescriptorChips;
+	FString ExistingAssetName;
 
 	UPROPERTY()
 	bool bRequireDomainConfirmation = true;
