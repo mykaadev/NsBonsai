@@ -1,8 +1,45 @@
-# NsBonsai
+<!-- GH_ONLY_START -->
+<h1 align="center">
+  <br>
+  <a href="https://github.com/mykaadev/NsBonsai">
+    <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Banner.png" alt="NsBonsai" width="400">
+  </a>
+</h1>
 
-NsBonsai is an Unreal Editor plugin that keeps asset names consistent without slowing your team down.
+<h4 align="center">Prune asset names into a consistent shape — fast, safe, and zero-diff.</h4>
 
-It watches newly added assets, waits until they are saved, then opens one compact review table where you can classify and rename in seconds.
+<div align="center">
+    <a href="https://github.com/mykaadev/NsBonsai/commits/main"><img src="https://img.shields.io/github/last-commit/mykaadev/NsBonsai?style=plastic&logo=github&logoColor=white" alt="GitHub Last Commit"></a>
+    <a href="https://github.com/mykaadev/NsBonsai/issues"><img src="https://img.shields.io/github/issues-raw/mykaadev/NsBonsai?style=plastic&logo=github&logoColor=white" alt="GitHub Issues"></a>
+    <a href="https://github.com/mykaadev/NsBonsai/pulls"><img src="https://img.shields.io/github/issues-pr-raw/mykaadev/NsBonsai?style=plastic&logo=github&logoColor=white" alt="GitHub Pull Requests"></a>
+    <a href="https://github.com/mykaadev/NsBonsai"><img src="https://img.shields.io/github/stars/mykaadev/NsBonsai?style=plastic&logo=github" alt="GitHub Stars"></a>
+    <a href="https://twitter.com/mykaadev/"><img src="https://img.shields.io/twitter/follow/mykaadev?style=plastic&logo=x" alt="Twitter Follow"></a>
+
+<p style="display:none;">
+  <a href="#-summary">🌳 Summary</a> •
+  <a href="#-why-nsbonsai">🎯 Why</a> •
+  <a href="#-features">✨ Features</a> •
+  <a href="#-how-it-works">🧠 How it works</a> •
+  <a href="#-configuration">🧩 Configuration</a> •
+  <a href="#-best-practices">📚 Best practices</a> •
+  <a href="#-requirements">⚙️ Requirements</a> •
+  <a href="#-installation">🛠️ Installation</a> •
+  <a href="#-getting-started">🚀 Getting Started</a> •
+  <a href="#-troubleshooting">🧯 Troubleshooting</a> •
+  <a href="#-roadmap">🗺️ Roadmap</a> •
+  <a href="#-credits">❤️ Credits</a> •
+  <a href="#-support">📞 Support</a> •
+  <a href="#-license">📃 License</a>
+</p>
+
+<a href="https://buymeacoffee.com/mykaadev"><img src="https://www.svgrepo.com/show/476855/coffee-to-go.svg" alt="Coffee" width="50px"></a>
+<p><b>Buy me a coffee!</b></p>
+</div>
+<!-- GH_ONLY_END -->
+
+## 🌳 Summary
+**NsBonsai** is a lightweight Unreal Engine editor plugin that standardises asset names *while you work*.
+It detects newly created/imported assets (after they’re saved), shows a compact review table, and renames assets using a consistent naming pattern.
 
 Default pattern:
 
@@ -12,192 +49,148 @@ Example:
 
 `SM_Foliage_Tree_Birch_A`
 
-## Why teams use it
+> **Zero-diff by design:** NsBonsai does **not** write metadata into assets, and does **not** require SQLite or external databases.  
+> It only renames assets when you explicitly confirm.
 
-Most naming tools are either too strict or too passive.
+<div align="center">
+  <!-- Replace with your own GIFs/screenshots -->
+  <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Showcase_Table.gif" width="800" />
+</div>
 
-NsBonsai sits in the middle:
+## 🎯 Why NsBonsai
+Naming isn’t “nice to have” — it’s how teams search, filter, batch process, and keep sanity across large projects.
 
-- Fast: one dense table, inline edits, multi-select bulk apply.
-- Safe: collision-safe variant allocation and guarded rename callbacks.
-- Practical: no SQLite, no asset metadata writes, no hidden data model.
-- Low-noise: single-window queue flow with threshold, cooldown, and snooze.
+NsBonsai focuses on:
+- **Speed:** compact table, bulk apply, keyboard-friendly workflow.
+- **Safety:** collision-safe variants, optional skip-compliant behavior.
+- **Low friction:** minimal setup (TypeRules + Domains/Categories), works without folder conventions.
+- **Team friendliness:** deterministic output and a shared token library.
 
-## Core guarantees
+## ✨ Features
+- **Compact “conveyor belt” UI:** one row per asset with inline Domain/Category selection, AssetName edit, live output, ✅ confirm, ❌ ignore.
+- **Bulk classification:** multi-select rows and apply the same Domain/Category to many assets at once.
+- **Collision-safe variants:** always appends a variant suffix (`A..Z`, `AA..`) to avoid name conflicts.
+- **Migration-friendly:** optional “Skip compliant assets” so existing projects don’t get spammed.
+- **Non-invasive:** no SQLite, no asset metadata writes, no changes unless you confirm.
+- **Dynamic taxonomy (optional):** add Domains/Categories on the fly from dropdowns and use them immediately.
 
-- Editor-only module.
-- No metadata written into assets.
-- No external database required.
-- Uses `AssetTools` for rename operations.
-- Uses UE save events (`UPackage::PackageSavedWithContextEvent`) to process added assets after they are persisted.
+## 🧠 How it works
+NsBonsai deliberately avoids “magic” folder rules. Instead it uses a simple token library and a predictable rename pipeline:
 
-## How it works (technical)
+### 1) Detect new assets (only after save)
+- Tracks newly created/imported assets via editor/AssetRegistry signals.
+- Uses package saved events so it only prompts once the asset is persisted.
+- Dedupes aggressively to avoid repeated entries and window spam.
 
-### 1) Detection and queueing
+### 2) Build the preview name (deterministic)
+- Type token is resolved from **TypeRules** (class → prefix).
+- Domain/Category come from your token library.
+- AssetName is a free-form field (prefilled from original).
+- Variant is allocated collision-safe during rename.
 
-NsBonsai tracks assets through:
+### 3) Rename safely
+- Uses Unreal’s **AssetTools** rename pipeline (redirector-safe, editor-friendly).
+- Guards against registry spam caused by renames so assets don’t re-queue or reopen windows.
 
-- `AssetRegistry.OnAssetAdded`
-- `AssetRegistry.OnAssetRenamed`
-- `UPackage::PackageSavedWithContextEvent`
+### 4) Compliance check (optional)
+When enabled, NsBonsai can skip enqueueing assets that already match your rules:
+- Valid Type token for the asset class
+- Known Domain/Category (and Category allowed under Domain if constrained)
+- Valid Variant suffix
+- Clean, sanitized AssetName
 
-Internal flow:
+## 🧩 Configuration
+Open: `Edit → Project Settings → NsBonsai`
 
-- Pending assets are tracked by package using soft paths.
-- On package save, pending paths are resolved through the Asset Registry.
-- Assets are queued once per session using a dedupe set.
-- A short ticker debounce coalesces bursts.
+### Type Rules (class → prefix)
+Define how NsBonsai maps asset classes to type prefixes:
 
-### 2) Single-window manager
+- Static Mesh → `SM`
+- Texture → `T`
+- Material Instance → `MI`
+- Blueprint → `BP`
+- …and whatever your project needs.
 
-The review manager keeps one weak window reference and never opens duplicates.
+### Domains & Categories (token library)
+Domains are your high-level tokens (e.g. `UI`, `Foliage`, `Character`).
+Each domain can contain allowed categories (e.g. `UI → Icon/Widget/Font`).
 
-If the window is already open, new queue items are appended to the same list and refreshed in place.
-
-### 3) Review table UX
-
-The review popup is a compact multi-column list with per-row controls:
-
-- Status
-- Current Asset
-- Type
-- Domain
-- Category
-- Asset Name
-- Final Name preview
-- Confirm / Ignore actions
-
-Bulk behavior:
-
-- Multi-select rows
-- Changing Domain or Category on one selected row applies to selected rows
-- Asset Name remains row-local by default
-
-### 4) Rename execution
-
-On confirm:
-
-- Row state is validated against active settings.
-- Final candidate is allocated with collision-safe variants.
-- `IAssetTools::RenameAssets` is executed inside a transaction.
-- Rename guard blocks re-queue noise from plugin-driven events.
-- Success/failure is logged to `Saved/Logs/NsBonsai_Rename.log`.
-
-## Naming model and settings
-
-Settings live under Project Settings (`Ns Bonsai`).
-
-### Pattern builder
-
-- Component order is configurable via `NameFormatOrder`.
-- Separator is configurable (`JoinSeparator`, default `_`).
-
-Available components:
-
-- `Type`
-- `Domain`
-- `Category`
-- `AssetName`
-- `Variant`
-
-### Feature toggles
-
-- Enable/disable Domains
-- Enable/disable Categories
-- Enable/disable Variant suffixes
-- Enable/disable editable Asset Name field
-
-### Token libraries
-
-- Type Rules: class path -> type token
-- Domain definitions with categories
-- Global categories (for domain-disabled workflows)
-- Optional normalization rules (`DeprecatedToken` -> `CanonicalToken`)
-
-### Behavior controls
-
-- Skip compliant assets
-- Popup threshold
-- Popup cooldown
-- Auto-close window when empty
-
-### Validation built in
-
-- Dedupes TypeRules by class path
-- Dedupes domains by domain token
-- Dedupes categories per domain
-- Sanitizes tokens and supports compliance checks
-
-## Installation
-
-1. Copy `NsBonsai` into your project's `Plugins/` directory.
-2. Regenerate project files.
-3. Build the project.
-4. Enable the plugin in Unreal Editor and restart.
-
-## Quick start
-
-1. Create or import assets.
-2. Save packages.
-3. Review queued rows in the NsBonsai window.
-4. Set Domain/Category, edit Asset Name if needed.
-5. Confirm to rename or Ignore to dismiss.
-
-Manual open:
-
-- `Tools -> NsBonsai Review Queue...`
-
-## Configuration example
-
+Example config:
 ```ini
 [/Script/NsBonsai.NsBonsaiSettings]
-JoinSeparator="_"
-NameFormatOrder=(Type,Domain,Category,AssetName,Variant)
-
-bUseDomains=True
-bUseCategories=True
-bUseVariant=True
-bUseAssetNameField=True
-bSkipCompliantAssets=True
-
 +TypeRules=(ClassPath="/Script/Engine.StaticMesh",TypeToken="SM")
 +TypeRules=(ClassPath="/Script/Engine.Texture",TypeToken="T")
++TypeRules=(ClassPath="/Script/Engine.MaterialInstance",TypeToken="MI")
 +TypeRules=(ClassPath="/Script/Engine.Blueprint",TypeToken="BP")
 
-+Domains=(DomainToken="Foliage",Categories=("Tree","Bush","Grass"))
-+Domains=(DomainToken="UI",Categories=("Widget","Icon","Style"))
++Domains=(DomainToken="UI",Categories=("Icon","Widget","Style","Font"))
++Domains=(DomainToken="Foliage",Categories=("Tree","Bush","Grass","Flower"))
++Domains=(DomainToken="Character",Categories=("Hero","NPC","Enemy","Animation"))
+
+JoinSeparator="_"
+bSkipCompliantAssets=True
 ```
 
-## Troubleshooting
+### Normalization (optional)
+Map legacy tokens into canonical ones:
+```ini
++TokenNormalizationRules=(DeprecatedToken="Ui",CanonicalToken="UI")
++TokenNormalizationRules=(DeprecatedToken="Chars",CanonicalToken="Character")
+```
 
-### Ctrl+S does not trigger queueing
+## 📚 Best practices
+NsBonsai follows the common UE convention of **type prefixes + underscores**.
+If you want a broader style guide reference:
+- Tom Looman naming guide: https://tomlooman.com/unreal-engine-naming-convention-guide
+- Allar UE style guide: https://github.com/Allar/ue5-style-guide
 
-NsBonsai only queues assets when save callbacks fire and pending paths resolve to valid Asset Registry entries.
+## ⚙️ Requirements
+- Unreal Engine **5.2+** (recommended 5.4/5.5+)
+- A C++ project (or a project that can compile plugins)
 
-Check:
+## 🛠️ Installation
+1. Clone or download this repository.
+2. Copy the `NsBonsai` folder into your project’s `Plugins` directory (create it if it doesn’t exist).
+3. Regenerate project files.
+4. Open Unreal Editor and enable **NsBonsai** under `Edit → Plugins`, then restart.
 
-- plugin is enabled and editor restarted
-- save event is binding correctly in your editor version
-- assets are actually being saved to disk
+## 🚀 Getting Started
+1. Create/import an asset.
+2. Save the asset/package.
+3. NsBonsai opens the review table.
 
-### Duplicate rows or repeated popup behavior
+### Table workflow
+- Select Domain + Category (bulk apply supported).
+- Edit AssetName (prefilled from original).
+- Verify live output.
+- ✅ Confirm renames immediately (row disappears).
+- ❌ Ignore removes the row with no changes.
 
-NsBonsai uses a session dedupe set and a single-window policy. If behavior looks noisy, verify you are on the latest plugin revision and check rename guard/cooldown settings.
+## 🧯 Troubleshooting
+### “Assets appear multiple times” / “A new window keeps popping up”
+Ensure the plugin:
+- Uses a single review window instance
+- Dedupes queued assets by SoftObjectPath for the whole session
+- Guards AssetRegistry callbacks during rename (rename guard / cooldown)
 
-### Asset appears but cannot confirm
+### “Nothing shows up after save”
+- Confirm the plugin is enabled and editor restarted.
+- Verify the save event binding is active (UE 5.5 uses `UPackage::PackageSavedWithContextEvent`).
+- Ensure the asset was actually saved (not just created).
 
-Row validation blocks rename when required components are missing or invalid for current settings. Hover status/final columns to inspect why.
+## 🗺️ Roadmap
+Ideas planned / under consideration:
+- **NsBonsai Asset Browser:** Content Browser-like view with Domain/Category filtering.
+- More UI QoL: tooltips everywhere, row status icons, “Confirm all valid”.
+- Profiles / naming templates (opt-in, no forced workflow).
 
-## Developer notes
+<!-- GH_ONLY_START -->
+## ❤️ Credits
+<a href="https://github.com/mykaadev/NsBonsai/graphs/contributors"><img src="https://contrib.rocks/image?repo=mykaadev/NsBonsai"/></a>
 
-Main code areas:
+## 📞 Support
+Reach out via the profile page: https://github.com/mykaadev
 
-- `FNsBonsaiReviewManager`: queue lifecycle, event hooks, popup policy
-- `SNsBonsaiReviewWindow`: table UI, row actions, bulk apply
-- `UNsBonsaiSettings`: schema, validation, token normalization
-- `FNsBonsaiNameRules`: parse/build/compliance/collision-safe allocation
-- `FNsBonsaiAssetEvaluator`: row prefill and candidate selection
-
-## License
-
-MIT (see `LICENSE`).
+## 📃 License
+[![License](https://img.shields.io/badge/license-MIT-green)](https://www.tldrlegal.com/license/mit-license)
+<!-- GH_ONLY_END -->
