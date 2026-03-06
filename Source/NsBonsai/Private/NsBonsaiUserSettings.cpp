@@ -4,43 +4,43 @@
 
 void UNsBonsaiUserSettings::TouchDomain(FName DomainToken)
 {
-	if (!DomainToken.IsNone())
-	{
-		TouchRecent(RecentDomains, DomainToken);
-	}
+    if (!DomainToken.IsNone())
+    {
+        TouchRecent(RecentDomains, DomainToken);
+    }
 }
 
 void UNsBonsaiUserSettings::TouchCategory(FName CategoryToken)
 {
-	if (!CategoryToken.IsNone())
-	{
-		TouchRecent(RecentCategories, CategoryToken);
-	}
+    if (!CategoryToken.IsNone())
+    {
+        TouchRecent(RecentCategories, CategoryToken);
+    }
 }
 
 void UNsBonsaiUserSettings::Save()
 {
-	SaveConfig();
-	if (GConfig)
-	{
-		GConfig->Flush(false, GetDefaultConfigFilename());
-	}
+    SaveConfig();
+    if (GConfig)
+    {
+        GConfig->Flush(false, GetDefaultConfigFilename());
+    }
 }
 
 template <typename TokenType>
 void UNsBonsaiUserSettings::TouchRecent(TArray<TokenType>& Target, const TokenType& Value)
 {
-	Target.Remove(Value);
-	Target.Insert(Value, 0);
+    Target.Remove(Value);
+    Target.Insert(Value, 0);
 
-	if (MaxRecentTokens <= 0)
-	{
-		Target.Reset();
-		return;
-	}
+    if (MaxRecentTokens <= 0)
+    {
+        Target.Reset();
+        return;
+    }
 
-	if (Target.Num() > MaxRecentTokens)
-	{
-		Target.SetNum(MaxRecentTokens, EAllowShrinking::Yes);
-	}
+    if (Target.Num() > MaxRecentTokens)
+    {
+        Target.SetNum(MaxRecentTokens, EAllowShrinking::Yes);
+    }
 }

@@ -1,117 +1,73 @@
 #include "NsBonsaiAssetEvaluator.h"
 
-#include "Algo/Sort.h"
-#include "Containers/Set.h"
 #include "NsBonsaiSettings.h"
 #include "NsBonsaiUserSettings.h"
 
-namespace NsBonsaiAssetEvaluator
+void FNsBonsaiAssetEvaluator::SortNamesRecentsThenAlpha(TArray<FName>& Tokens, const TArray<FName>& Recents)
 {
-	TMap<FName, TArray<FName>> BuildCategoriesByDomain(const UNsBonsaiSettings& Settings)
-	{
-		TMap<FName, TArray<FName>> Result;
+    Tokens.Sort([&Recents](const FName& Left, const FName& Right)
+    {
+        const int32 LeftIndex = Recents.IndexOfByKey(Left);
+        const int32 RightIndex = Recents.IndexOfByKey(Right);
+        const bool bLeftRecent = LeftIndex != INDEX_NONE;
+        const bool bRightRecent = RightIndex != INDEX_NONE;
 
-		for (const FNsBonsaiDomainDef& DomainDef : Settings.Domains)
-		{
-			const FName Domain = Settings.NormalizeToken(DomainDef.DomainToken);
-			if (Domain.IsNone())
-			{
-				continue;
-			}
+        if (bLeftRecent && bRightRecent)
+        {
+            return LeftIndex < RightIndex;
+        }
 
-			TArray<FName>& Categories = Result.FindOrAdd(Domain);
-			TSet<FName> Seen;
-			for (const FName Category : DomainDef.Categories)
-			{
-				const FName NormalizedCategory = Settings.NormalizeToken(Category);
-				if (!NormalizedCategory.IsNone() && !Seen.Contains(NormalizedCategory))
-				{
-					Seen.Add(NormalizedCategory);
-					Categories.Add(NormalizedCategory);
-				}
-			}
-		}
+        if (bLeftRecent != bRightRecent)
+        {
+            return bLeftRecent;
+        }
 
-		return Result;
-	}
-
-	void SortNamesRecentsThenAlpha(TArray<FName>& Tokens, const TArray<FName>& Recents)
-	{
-		Tokens.Sort([&Recents](const FName& Left, const FName& Right)
-		{
-			const int32 LeftIdx = Recents.IndexOfByKey(Left);
-			const int32 RightIdx = Recents.IndexOfByKey(Right);
-			const bool bLeftRecent = LeftIdx != INDEX_NONE;
-			const bool bRightRecent = RightIdx != INDEX_NONE;
-
-			if (bLeftRecent && bRightRecent)
-			{
-				return LeftIdx < RightIdx;
-			}
-
-			if (bLeftRecent != bRightRecent)
-			{
-				return bLeftRecent;
-			}
-
-			return Left.ToString().Compare(Right.ToString(), ESearchCase::IgnoreCase) < 0;
-		});
-	}
+        return Left.ToString().Compare(Right.ToString(), ESearchCase::IgnoreCase) < 0;
+    });
 }
 
 FNsBonsaiEvaluationResult FNsBonsaiAssetEvaluator::Evaluate(const FAssetData& AssetData, const UNsBonsaiSettings& Settings, const UNsBonsaiUserSettings& UserSettings)
 {
-	FNsBonsaiEvaluationResult Result;
+    FNsBonsaiEvaluationResult Result;
+    Result.TypeToken = Settings.ResolveTypeTokenForClassPath(AssetData.AssetClassPath);
 
-	Result.TypeToken = Settings.ResolveTypeTokenForClassPath(AssetData.AssetClassPath);
+    const FNsBonsaiParsedName ParsedName = FNsBonsaiNameBuilder::ParseExistingAssetName(AssetData.AssetName.ToString(), Settings);
+    Result.ExistingAssetName = ParsedName.ExistingAssetName;
 
-	const FNsBonsaiParsedName ParsedName = FNsBonsaiNameBuilder::ParseExistingAssetName(AssetData.AssetName.ToString(), Settings);
-	Result.ExistingAssetName = ParsedName.ExistingAssetName;
+    const bool bUseDomainComponent = Settings.IsComponentEnabled(ENsBonsaiNameComponent::Domain);
+    const bool bUseCategoryComponent = Settings.IsComponentEnabled(ENsBonsaiNameComponent::Category);
 
-	TArray<FName> AllDomains;
-	TSet<FName> SeenDomains;
-	for (const FNsBonsaiDomainDef& DomainDef : Settings.Domains)
-	{
-		const FName Domain = Settings.NormalizeToken(DomainDef.DomainToken);
-		if (!Domain.IsNone() && !SeenDomains.Contains(Domain))
-		{
-			SeenDomains.Add(Domain);
-			AllDomains.Add(Domain);
-		}
-	}
+    if (bUseDomainComponent)
+    {
+        Settings.GetDomainTokens(Result.DomainCandidates);
+        SortNamesRecentsThenAlpha(Result.DomainCandidates, UserSettings.RecentDomains);
 
-	Result.DomainCandidates = AllDomains;
-	NsBonsaiAssetEvaluator::SortNamesRecentsThenAlpha(Result.DomainCandidates, UserSettings.RecentDomains);
+        if (!ParsedName.DomainToken.IsNone() && Result.DomainCandidates.Contains(ParsedName.DomainToken))
+        {
+            Result.PreselectedDomain = ParsedName.DomainToken;
+        }
+        else if (Result.DomainCandidates.Num() > 0)
+        {
+            Result.PreselectedDomain = Result.DomainCandidates[0];
+        }
+    }
 
-	if (!ParsedName.DomainToken.IsNone() && Result.DomainCandidates.Contains(ParsedName.DomainToken))
-	{
-		Result.PreselectedDomain = ParsedName.DomainToken;
-	}
-	else if (Result.DomainCandidates.Num() > 0)
-	{
-		Result.PreselectedDomain = Result.DomainCandidates[0];
-	}
+    if (bUseCategoryComponent)
+    {
+        Settings.GetCategoryTokens(Result.PreselectedDomain, Result.CategoryCandidates);
+        SortNamesRecentsThenAlpha(Result.CategoryCandidates, UserSettings.RecentCategories);
 
-	const TMap<FName, TArray<FName>> CategoriesByDomain = NsBonsaiAssetEvaluator::BuildCategoriesByDomain(Settings);
-	if (!Result.PreselectedDomain.IsNone())
-	{
-		if (const TArray<FName>* Categories = CategoriesByDomain.Find(Result.PreselectedDomain))
-		{
-			Result.CategoryCandidates = *Categories;
-			NsBonsaiAssetEvaluator::SortNamesRecentsThenAlpha(Result.CategoryCandidates, UserSettings.RecentCategories);
-		}
-	}
+        if (!ParsedName.CategoryToken.IsNone() && Result.CategoryCandidates.Contains(ParsedName.CategoryToken))
+        {
+            Result.PreselectedCategory = ParsedName.CategoryToken;
+        }
+        else if (Result.CategoryCandidates.Num() > 0)
+        {
+            Result.PreselectedCategory = Result.CategoryCandidates[0];
+        }
+    }
 
-	if (!ParsedName.CategoryToken.IsNone() && Result.CategoryCandidates.Contains(ParsedName.CategoryToken))
-	{
-		Result.PreselectedCategory = ParsedName.CategoryToken;
-	}
-	else if (Result.CategoryCandidates.Num() > 0)
-	{
-		Result.PreselectedCategory = Result.CategoryCandidates[0];
-	}
-
-	Result.bRequireDomainConfirmation = true;
-	Result.bRequireCategoryConfirmation = true;
-	return Result;
+    Result.bRequireDomainConfirmation = bUseDomainComponent;
+    Result.bRequireCategoryConfirmation = bUseCategoryComponent;
+    return Result;
 }

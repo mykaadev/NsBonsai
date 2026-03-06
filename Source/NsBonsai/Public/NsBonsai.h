@@ -6,19 +6,23 @@
 
 class FNsBonsaiReviewManager;
 
+/** Module entry point that owns the NsBonsai editor review manager. */
 class FNsBonsaiModule : public IModuleInterface
 {
 public:
+    /** Starts module services and editor integrations. */
+    virtual void StartupModule() override;
 
-	/** IModuleInterface implementation */
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
+    /** Shuts down module services and unregisters editor integrations. */
+    virtual void ShutdownModule() override;
 
 private:
-#if WITH_EDITOR
-	void RegisterMenus();
-	void OpenReviewQueueFromMenu();
-#endif
+    /** Registers Tools menu entries for NsBonsai actions. */
+    void RegisterMenus();
 
-	TUniquePtr<FNsBonsaiReviewManager> ReviewManager;
+    /** Opens the review queue from the Tools menu command. */
+    void OpenReviewQueueFromMenu();
+
+    /** Owned manager responsible for asset queueing and review window flow. */
+    TUniquePtr<FNsBonsaiReviewManager> ReviewManager;
 };
