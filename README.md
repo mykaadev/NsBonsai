@@ -6,7 +6,7 @@
   </a>
 </h1>
 
-<h4 align="center">Prune asset names into a consistent shape — fast, safe, and zero-diff.</h4>
+<h4 align="center">Prune asset names into a consistent shape - fast and safe</h4>
 
 <div align="center">
     <a href="https://github.com/mykaadev/NsBonsai/commits/main"><img src="https://img.shields.io/github/last-commit/mykaadev/NsBonsai?style=plastic&logo=github&logoColor=white" alt="GitHub Last Commit"></a>
@@ -25,8 +25,6 @@
   <a href="#-requirements">⚙️ Requirements</a> •
   <a href="#-installation">🛠️ Installation</a> •
   <a href="#-getting-started">🚀 Getting Started</a> •
-  <a href="#-troubleshooting">🧯 Troubleshooting</a> •
-  <a href="#-roadmap">🗺️ Roadmap</a> •
   <a href="#-credits">❤️ Credits</a> •
   <a href="#-support">📞 Support</a> •
   <a href="#-license">📃 License</a>
@@ -39,7 +37,7 @@
 
 ## 🌳 Summary
 **NsBonsai** is a lightweight Unreal Engine editor plugin that standardises asset names *while you work*.
-It detects newly created/imported assets (after they’re saved), shows a compact review table, and renames assets using a consistent naming pattern.
+It detects newly created/imported assets, shows a compact review table, and renames assets using a consistent naming pattern.
 
 Default pattern:
 
@@ -49,7 +47,7 @@ Example:
 
 `SM_Foliage_Tree_Birch_A`
 
-> **Zero-diff by design:** NsBonsai does **not** write metadata into assets, and does **not** require SQLite or external databases.  
+> **Zero-diff by design:** NsBonsai does **not** write metadata into assets.
 > It only renames assets when you explicitly confirm.
 
 <div align="center">
@@ -58,20 +56,20 @@ Example:
 </div>
 
 ## 🎯 Why NsBonsai
-Naming isn’t “nice to have” — it’s how teams search, filter, batch process, and keep sanity across large projects.
+Naming isn’t “nice to have” - it’s how teams search, filter, batch process, and keep sanity across large projects.
 
 NsBonsai focuses on:
-- **Speed:** compact table, bulk apply, keyboard-friendly workflow.
-- **Safety:** collision-safe variants, optional skip-compliant behavior.
-- **Low friction:** minimal setup (TypeRules + Domains/Categories), works without folder conventions.
+- **Speed:** compact table, bulk actions and a friendly workflow.
+- **Safety:** collision-safe variants.
+- **Low friction:** minimal setup (TypeRules + Domains/Categories).
 - **Team friendliness:** deterministic output and a shared token library.
 
 ## ✨ Features
 - **Compact “conveyor belt” UI:** one row per asset with inline Domain/Category selection, AssetName edit, live output, ✅ confirm, ❌ ignore.
 - **Bulk classification:** multi-select rows and apply the same Domain/Category to many assets at once.
 - **Collision-safe variants:** always appends a variant suffix (`A..Z`, `AA..`) to avoid name conflicts.
-- **Migration-friendly:** optional “Skip compliant assets” so existing projects don’t get spammed.
-- **Non-invasive:** no SQLite, no asset metadata writes, no changes unless you confirm.
+- **Migration-friendly:** “Skip compliant assets” so new projects don’t get spammed.
+- **Non-invasive:** no asset metadata writes, no changes unless you confirm.
 - **Dynamic taxonomy (optional):** add Domains/Categories on the fly from dropdowns and use them immediately.
 
 ## 🧠 How it works
@@ -131,7 +129,7 @@ JoinSeparator="_"
 bSkipCompliantAssets=True
 ```
 
-### Normalization (optional)
+### Normalization
 Map legacy tokens into canonical ones:
 ```ini
 +TokenNormalizationRules=(DeprecatedToken="Ui",CanonicalToken="UI")
@@ -145,8 +143,7 @@ If you want a broader style guide reference:
 - Allar UE style guide: https://github.com/Allar/ue5-style-guide
 
 ## ⚙️ Requirements
-- Unreal Engine **5.2+** (recommended 5.4/5.5+)
-- A C++ project (or a project that can compile plugins)
+- Unreal Engine **5.2+**
 
 ## 🛠️ Installation
 1. Clone or download this repository.
@@ -158,31 +155,15 @@ If you want a broader style guide reference:
 1. Create/import an asset.
 2. Save the asset/package.
 3. NsBonsai opens the review table.
+4. Handle it!
 
 ### Table workflow
 - Select Domain + Category (bulk apply supported).
 - Edit AssetName (prefilled from original).
 - Verify live output.
-- ✅ Confirm renames immediately (row disappears).
+- ✅ Confirm renames immediately.
 - ❌ Ignore removes the row with no changes.
 
-## 🧯 Troubleshooting
-### “Assets appear multiple times” / “A new window keeps popping up”
-Ensure the plugin:
-- Uses a single review window instance
-- Dedupes queued assets by SoftObjectPath for the whole session
-- Guards AssetRegistry callbacks during rename (rename guard / cooldown)
-
-### “Nothing shows up after save”
-- Confirm the plugin is enabled and editor restarted.
-- Verify the save event binding is active (UE 5.5 uses `UPackage::PackageSavedWithContextEvent`).
-- Ensure the asset was actually saved (not just created).
-
-## 🗺️ Roadmap
-Ideas planned / under consideration:
-- **NsBonsai Asset Browser:** Content Browser-like view with Domain/Category filtering.
-- More UI QoL: tooltips everywhere, row status icons, “Confirm all valid”.
-- Profiles / naming templates (opt-in, no forced workflow).
 
 <!-- GH_ONLY_START -->
 ## ❤️ Credits
