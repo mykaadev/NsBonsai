@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,5 +15,10 @@ public:
 	virtual void ShutdownModule() override;
 
 private:
+#if WITH_EDITOR
+	void RegisterMenus();
+	void OpenReviewQueueFromMenu();
+#endif
+
 	TUniquePtr<FNsBonsaiReviewManager> ReviewManager;
 };

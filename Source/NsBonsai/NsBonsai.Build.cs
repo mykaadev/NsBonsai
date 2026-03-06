@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -52,6 +52,7 @@ public class NsBonsai : ModuleRules
 				{
 					"AssetTools",
 					"UnrealEd",
+					"ToolMenus",
 				}
 			);
 		}

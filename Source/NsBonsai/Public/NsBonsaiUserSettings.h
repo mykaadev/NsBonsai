@@ -19,6 +19,15 @@ public:
 	UPROPERTY(Config)
 	int32 MaxRecentTokens = 20;
 
+	UPROPERTY(Config, EditAnywhere, Category = "Review", meta = (ClampMin = "1", UIMin = "1"))
+	int32 MinAssetsToPopup = 1;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Review", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float PopupCooldownSeconds = 2.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Review")
+	bool bSkipCompliantAssets = true;
+
 	void TouchDomain(FName DomainToken);
 	void TouchCategory(FName CategoryToken);
 	void Save();
