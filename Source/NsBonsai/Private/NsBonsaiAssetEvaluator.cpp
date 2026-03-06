@@ -1,5 +1,6 @@
-#include "NsBonsaiAssetEvaluator.h"
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
+#include "NsBonsaiAssetEvaluator.h"
 #include "NsBonsaiSettings.h"
 #include "NsBonsaiUserSettings.h"
 

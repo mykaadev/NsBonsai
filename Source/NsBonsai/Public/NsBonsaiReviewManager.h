@@ -1,10 +1,11 @@
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
-#include "HAL/PlatformTime.h"
-
 #include "AssetRegistry/AssetData.h"
 #include "Containers/Ticker.h"
+#include "HAL/PlatformTime.h"
 #include "UObject/ObjectSaveContext.h"
 #include "UObject/SoftObjectPath.h"
 

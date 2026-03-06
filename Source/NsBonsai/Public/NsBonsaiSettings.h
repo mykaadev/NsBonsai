@@ -1,3 +1,5 @@
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -28,6 +30,13 @@ struct FNsBonsaiTypeRule
     /** Token used when this class path resolves. */
     UPROPERTY(EditAnywhere, Config, Category = "Naming|Library|Type Rules", meta = (DisplayName = "Type Token", ToolTip = "Type token used when this class is detected, e.g. SM, BP, MI."))
     FName TypeToken;
+
+    /** Equality operator */
+    inline bool operator==(const FNsBonsaiTypeRule& InRHS) const
+    {
+        return ClassPath == InRHS.ClassPath
+            && TypeToken == InRHS.TypeToken;
+    }
 };
 
 /** Defines a domain token and its allowed categories. */
@@ -43,6 +52,13 @@ struct FNsBonsaiDomainDef
     /** Optional category tokens allowed for this domain. */
     UPROPERTY(EditAnywhere, Config, Category = "Naming|Library|Domains", meta = (DisplayName = "Categories", ToolTip = "Optional list of valid categories within this domain."))
     TArray<FName> Categories;
+
+    /** Equality operator */
+    inline bool operator==(const FNsBonsaiDomainDef& InRHS) const
+    {
+        return DomainToken == InRHS.DomainToken
+             && Categories == InRHS.Categories;
+    }
 };
 
 /** Maps deprecated token aliases to canonical token values. */
@@ -59,8 +75,6 @@ struct FNsBonsaiTokenNormalizationRule
     UPROPERTY(EditAnywhere, Config, Category = "Naming|Normalization", meta = (DisplayName = "Canonical Token", ToolTip = "Token alias to normalize to."))
     FName CanonicalToken;
 };
-
-struct FPropertyChangedEvent;
 
 /** Stores plugin naming, validation, and review-window behavior settings. */
 UCLASS(Config = NsBonsai, DefaultConfig, meta = (DisplayName = "Ns Bonsai"))

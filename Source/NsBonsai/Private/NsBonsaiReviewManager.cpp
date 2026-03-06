@@ -1,15 +1,16 @@
-#include "NsBonsaiReviewManager.h"
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
+#include "NsBonsaiReviewManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "Containers/Ticker.h"
-#include "HAL/FileManager.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Framework/Notifications/NotificationManager.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "HAL/FileManager.h"
 #include "IAssetTools.h"
-#include "Misc/FileHelper.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "NsBonsaiAssetEvaluator.h"
@@ -23,11 +24,12 @@
 #include "UObject/Package.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
@@ -35,7 +37,6 @@
 #include "Widgets/Views/SHeaderRow.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
-#include "Widgets/Notifications/SNotificationList.h"
 
 class SNsBonsaiReviewWindow final : public SCompoundWidget
 {

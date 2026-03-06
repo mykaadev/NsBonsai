@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
 #include "NsBonsai.h"
-
 #include "NsBonsaiReviewManager.h"
-
 #include "ToolMenus.h"
 
 #define LOCTEXT_NAMESPACE "FNsBonsaiModule"

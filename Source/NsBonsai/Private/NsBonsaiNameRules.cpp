@@ -1,5 +1,6 @@
-#include "NsBonsaiNameRules.h"
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
+#include "NsBonsaiNameRules.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "ObjectTools.h"
 

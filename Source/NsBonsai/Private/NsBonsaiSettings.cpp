@@ -1,3 +1,5 @@
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
+
 #include "NsBonsaiSettings.h"
 
 #include "Misc/ConfigCacheIni.h"

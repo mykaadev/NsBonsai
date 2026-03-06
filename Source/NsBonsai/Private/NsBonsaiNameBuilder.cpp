@@ -1,5 +1,6 @@
-#include "NsBonsaiNameBuilder.h"
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
+#include "NsBonsaiNameBuilder.h"
 #include "Containers/Map.h"
 #include "NsBonsaiSettings.h"
 
