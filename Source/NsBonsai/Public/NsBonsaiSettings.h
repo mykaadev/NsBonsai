@@ -17,6 +17,15 @@ enum class ENsBonsaiNameComponent : uint8
     Variant UMETA(DisplayName = "Variant")
 };
 
+/** Defines how the review workflow is triggered at runtime. */
+UENUM(BlueprintType)
+enum class ENsBonsaiReviewTriggerMode : uint8
+{
+    Automatic UMETA(DisplayName = "Automatic"),
+    ManualOnly UMETA(DisplayName = "Manual Only"),
+    Disabled UMETA(DisplayName = "Disabled")
+};
+
 /** Maps an asset class path to a naming type token. */
 USTRUCT(BlueprintType)
 struct FNsBonsaiTypeRule
@@ -133,6 +142,10 @@ public:
     /** Skips queueing assets that already match active naming rules. */
     UPROPERTY(EditAnywhere, Config, Category = "Naming|Behavior", meta = (DisplayName = "Skip Compliant Assets", ToolTip = "Skip enqueueing assets that already comply with the current naming format."))
     bool bSkipCompliantAssets;
+
+    /** Controls automatic tracking/popup behavior for the review workflow. */
+    UPROPERTY(EditAnywhere, Config, Category = "Naming|Behavior", meta = (DisplayName = "Review Trigger Mode", ToolTip = "Automatic: track and auto-popup. Manual Only: track and queue, but open only from Tools menu. Disabled: stop tracking and popups entirely."))
+    ENsBonsaiReviewTriggerMode ReviewTriggerMode;
 
     /** Minimum queued assets required for automatic popup opening. */
     UPROPERTY(EditAnywhere, Config, Category = "Naming|Behavior", meta = (DisplayName = "Popup Threshold Count", ToolTip = "Minimum queued assets required before showing popup automatically.", ClampMin = "1", UIMin = "1", ClampMax = "1000", UIMax = "1000"))

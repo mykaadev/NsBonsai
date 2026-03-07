@@ -33,6 +33,7 @@ public:
         if (!bApplyingRename)
         {
             ApplyingRenameCooldownUntil = FPlatformTime::Seconds() + 1.0;
+            bRefocusReviewWindowAfterRename = true;
         }
     }
 
@@ -51,6 +52,9 @@ public:
 
     /** Opens review queue immediately or focuses existing review window. */
     void OpenReviewQueueNow();
+
+    /** Queues explicit assets from user selection and opens/focuses the review window. */
+    void OpenReviewForAssets(const TArray<FAssetData>& Assets);
 
     /** Snoozes automatic popup opening for the specified number of minutes. */
     void SnoozeForMinutes(double Minutes);
@@ -80,6 +84,9 @@ private:
     /** Processes all packages captured by save callbacks. */
     void ProcessSavedPackages();
 
+    /** Resolves all tracked pending paths into queue entries, without waiting for save events. */
+    void FlushPendingToReviewQueue();
+
     /** Requeues unresolved assets returned by a closed review window. */
     void RequeueAssets(const TArray<FAssetData>& Assets);
 
@@ -92,6 +99,9 @@ private:
     /** Appends current queue items into the existing review window widget. */
     void AppendReviewQueueToOpenWindow();
 
+    /** Returns true if an object path is already present in queue or visible rows. */
+    bool IsObjectPathQueuedOrVisible(const FSoftObjectPath& ObjectPath) const;
+
     /** Shows a non-intrusive toast when assets are queued below popup threshold. */
     void ShowQueuedToast();
 
@@ -100,6 +110,15 @@ private:
 
     /** Returns configured auto-popup cooldown duration in seconds. */
     double GetPopupCooldownSeconds() const;
+
+    /** Returns true when runtime tracking is allowed by settings. */
+    bool IsMonitoringEnabled() const;
+
+    /** Returns true when automatic popup behavior is enabled by settings. */
+    bool IsAutomaticPopupEnabled() const;
+
+    /** Clears queued runtime state and closes review UI when the tool is disabled. */
+    void DisableRuntimeState();
 
     /** Returns true when compliant assets should be skipped during tracking. */
     bool ShouldSkipCompliantAssets() const;
@@ -145,6 +164,9 @@ private:
 
     /** End timestamp for the short post-rename callback guard cooldown. */
     double ApplyingRenameCooldownUntil = 0.0;
+
+    /** True when the review window should be restored/focused after rename-save churn settles. */
+    bool bRefocusReviewWindowAfterRename = false;
 
     /** Timestamp until which auto-popup opening remains snoozed. */
     double SnoozedUntilTime = 0.0;

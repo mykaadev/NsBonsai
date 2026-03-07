@@ -5,6 +5,8 @@
 #include "Modules/ModuleManager.h"
 
 class FNsBonsaiReviewManager;
+class UContentBrowserAssetContextMenuContext;
+struct FToolMenuSection;
 
 /** Module entry point that owns the NsBonsai editor review manager. */
 class FNsBonsaiModule : public IModuleInterface
@@ -22,6 +24,9 @@ private:
 
     /** Opens the review queue from the Tools menu command. */
     void OpenReviewQueueFromMenu();
+
+    /** Adds the Content Browser asset context menu entry for manual Bonsai review. */
+    void AddAssetContextMenuEntry(FToolMenuSection& Section);
 
     /** Owned manager responsible for asset queueing and review window flow. */
     TUniquePtr<FNsBonsaiReviewManager> ReviewManager;

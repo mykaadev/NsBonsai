@@ -349,6 +349,8 @@ private:
         return FNsBonsaiNameRules::SmartPrefillAssetName(OriginalAssetName, *Settings);
     }
 
+    struct FDeferredRenameEntry;
+
     static FNsBonsaiRowState ToRowState(const FRowModel& Row)
     {
         FNsBonsaiRowState State;
@@ -360,26 +362,61 @@ private:
         return State;
     }
 
-    void RebuildPreview(FRowModel& Row) const
+    FString BuildRowObjectPathString(const FAssetData& AssetData, const FString& ObjectName) const
+    {
+        const FString PackagePath = AssetData.PackagePath.ToString();
+        return FString::Printf(TEXT("%s/%s.%s"), *PackagePath, *ObjectName, *ObjectName);
+    }
+
+    void RebuildAllPreviews()
     {
         if (!Settings)
         {
-            Row.PreviewName.Reset();
+            for (const TSharedPtr<FRowModel>& Row : Rows)
+            {
+                if (Row.IsValid())
+                {
+                    Row->PreviewName.Reset();
+                }
+            }
             return;
         }
 
         IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
         TSet<FString> ReservedObjectPaths;
-        FString FinalName;
-        FSoftObjectPath NewPath;
-        FString Error;
-        if (FNsBonsaiNameRules::AllocateFinalNameWithVariant(Row.AssetData, ToRowState(Row), *Settings, AssetRegistry, ReservedObjectPaths, FinalName, NewPath, Error))
+        for (const FDeferredRenameEntry& Deferred : DeferredRenames)
         {
-            Row.PreviewName = FinalName;
-            return;
+            if (Deferred.NewPath.IsValid())
+            {
+                ReservedObjectPaths.Add(Deferred.NewPath.ToString());
+            }
         }
 
-        Row.PreviewName = FNsBonsaiNameRules::BuildPreviewName(Row.AssetData, ToRowState(Row), *Settings);
+        for (const TSharedPtr<FRowModel>& Row : Rows)
+        {
+            if (!Row.IsValid())
+            {
+                continue;
+            }
+
+            FString FinalName;
+            FSoftObjectPath NewPath;
+            FString Error;
+            if (FNsBonsaiNameRules::AllocateFinalNameWithVariant(Row->AssetData, ToRowState(*Row), *Settings, AssetRegistry, ReservedObjectPaths, FinalName, NewPath, Error))
+            {
+                Row->PreviewName = FinalName;
+            }
+            else
+            {
+                Row->PreviewName = FNsBonsaiNameRules::BuildPreviewName(Row->AssetData, ToRowState(*Row), *Settings);
+            }
+        }
+    }
+
+    void RebuildPreview(FRowModel& Row)
+    {
+        Row.PreviewName.Reset();
+        RebuildAllPreviews();
     }
 
     enum class ERowStatus : uint8
@@ -666,15 +703,6 @@ private:
     TArray<TSharedPtr<FRowModel>> GetSelectionOrSingle(const TSharedPtr<FRowModel>& FocusRow)
     {
         TArray<TSharedPtr<FRowModel>> Selection;
-        if (ListView.IsValid())
-        {
-            ListView->GetSelectedItems(Selection);
-        }
-        if (Selection.Num() > 0 && Selection.Contains(FocusRow))
-        {
-            return Selection;
-        }
-        Selection.Reset();
         Selection.Add(FocusRow);
         return Selection;
     }
@@ -1280,7 +1308,7 @@ private:
         return MenuBuilder.MakeWidget();
     }
 
-    void RemoveRows(const TArray<TSharedPtr<FRowModel>>& Targets)
+    void RemoveRows(const TArray<TSharedPtr<FRowModel>>& Targets, bool bAllowRequeue = false)
     {
         for (const TSharedPtr<FRowModel>& Row : Targets)
         {
@@ -1291,12 +1319,14 @@ private:
 
             if (Manager)
             {
-                Manager->MarkResolved(Row->ObjectPath);
+                Manager->MarkResolved(Row->ObjectPath, bAllowRequeue);
             }
             Rows.Remove(Row);
             CategoryOptionsByRow.Remove(Row);
             RowPaths.Remove(Row->ObjectPath);
         }
+
+        RebuildAllPreviews();
 
         if (ListView.IsValid())
         {
@@ -1307,7 +1337,12 @@ private:
 
     FReply OnIgnoreClicked(const TSharedPtr<FRowModel>& FocusRow)
     {
-        const TArray<TSharedPtr<FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+        const int32 InitialRowCount = Rows.Num();
+        TArray<TSharedPtr<FRowModel>> Targets;
+        if (FocusRow.IsValid())
+        {
+            Targets.Add(FocusRow);
+        }
         TArray<TSharedPtr<FRowModel>> Removals;
         for (const TSharedPtr<FRowModel>& Row : Targets)
         {
@@ -1323,7 +1358,7 @@ private:
         {
             RemoveRows(Removals);
         }
-        if (GetRemainingCount() == 0 && Settings->bAutoCloseWindowWhenEmpty)
+        if (InitialRowCount == 1 && Rows.Num() == 0 && Settings->bAutoCloseWindowWhenEmpty)
         {
             return CloseWindow();
         }
@@ -1334,6 +1369,24 @@ private:
     {
         IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
         TSet<FString> ReservedObjectPaths;
+        TSet<const FRowModel*> SourceRowSet;
+        for (const TSharedPtr<FRowModel>& SourceRow : SourceRows)
+        {
+            if (SourceRow.IsValid())
+            {
+                SourceRowSet.Add(SourceRow.Get());
+            }
+        }
+
+        for (const TSharedPtr<FRowModel>& ExistingRow : Rows)
+        {
+            if (!ExistingRow.IsValid() || SourceRowSet.Contains(ExistingRow.Get()) || ExistingRow->PreviewName.IsEmpty())
+            {
+                continue;
+            }
+
+            ReservedObjectPaths.Add(BuildRowObjectPathString(ExistingRow->AssetData, ExistingRow->PreviewName));
+        }
         for (const FDeferredRenameEntry& Deferred : DeferredRenames)
         {
             if (Deferred.NewPath.IsValid())
@@ -1452,7 +1505,14 @@ private:
 
     FReply OnConfirmClicked(const TSharedPtr<FRowModel>& FocusRow)
     {
-        const TArray<TSharedPtr<FRowModel>> Targets = GetSelectionOrSingle(FocusRow);
+        const int32 InitialRowCount = Rows.Num();
+        RebuildAllPreviews();
+
+        TArray<TSharedPtr<FRowModel>> Targets;
+        if (FocusRow.IsValid())
+        {
+            Targets.Add(FocusRow);
+        }
         TArray<TSharedPtr<FRowModel>> ActionableTargets;
         for (const TSharedPtr<FRowModel>& Row : Targets)
         {
@@ -1537,7 +1597,7 @@ private:
                 ConfirmedCount += PlannedRows.Num();
                 RemoveRows(PlannedRows);
             }
-            if (GetRemainingCount() == 0 && Settings->bAutoCloseWindowWhenEmpty)
+            if (InitialRowCount == 1 && Rows.Num() == 0 && Settings->bAutoCloseWindowWhenEmpty)
             {
                 return CloseWindow();
             }
@@ -1592,9 +1652,9 @@ private:
         if (SuccessfulRows.Num() > 0)
         {
             ConfirmedCount += SuccessfulRows.Num();
-            RemoveRows(SuccessfulRows);
+            RemoveRows(SuccessfulRows, true);
         }
-        if (GetRemainingCount() == 0 && Settings->bAutoCloseWindowWhenEmpty)
+        if (InitialRowCount == 1 && Rows.Num() == 0 && Settings->bAutoCloseWindowWhenEmpty)
         {
             return CloseWindow();
         }
@@ -1648,6 +1708,83 @@ public:
         }
     }
 
+    bool HasRowByObjectPath(const FSoftObjectPath& ObjectPath) const
+    {
+        return ObjectPath.IsValid() && RowPaths.Contains(ObjectPath);
+    }
+
+    bool HandleExternalRename(const FSoftObjectPath& OldPath, const FAssetData& NewAssetData)
+    {
+        if (!OldPath.IsValid() || !NewAssetData.IsValid())
+        {
+            return false;
+        }
+
+        const FSoftObjectPath NewPath = NewAssetData.GetSoftObjectPath();
+        for (const TSharedPtr<FRowModel>& Row : Rows)
+        {
+            if (!Row.IsValid() || Row->ObjectPath != OldPath)
+            {
+                continue;
+            }
+
+            const FString PreviousCurrentName = Row->CurrentName;
+            RowPaths.Remove(OldPath);
+
+            Row->AssetData = NewAssetData;
+            Row->ObjectPath = NewPath;
+            Row->CurrentName = NewAssetData.AssetName.ToString();
+            Row->ParsedBaseName = BuildSmartPrefillAssetName(Row->CurrentName);
+            Row->SmartPrefillName = Row->ParsedBaseName;
+
+            const FString SanitizedPreviousCurrent = SanitizeAssetNameCandidate(PreviousCurrentName);
+            if (Row->AssetName.IsEmpty() || Row->AssetName.Equals(SanitizedPreviousCurrent, ESearchCase::IgnoreCase))
+            {
+                SetRowAssetName(Row, Row->SmartPrefillName, false);
+            }
+            else
+            {
+                RebuildPreview(*Row);
+            }
+
+            if (NewPath.IsValid())
+            {
+                RowPaths.Add(NewPath);
+            }
+
+            RebuildAllPreviews();
+            RequestRefresh();
+            return true;
+        }
+
+        return false;
+    }
+
+    bool RemoveRowByObjectPath(const FSoftObjectPath& ObjectPath)
+    {
+        if (!ObjectPath.IsValid())
+        {
+            return false;
+        }
+
+        TArray<TSharedPtr<FRowModel>> RowsToRemove;
+        for (const TSharedPtr<FRowModel>& Row : Rows)
+        {
+            if (Row.IsValid() && Row->ObjectPath == ObjectPath)
+            {
+                RowsToRemove.Add(Row);
+            }
+        }
+
+        if (RowsToRemove.Num() == 0)
+        {
+            return false;
+        }
+
+        RemoveRows(RowsToRemove, true);
+        return true;
+    }
+
 private:
     friend class SCompactRow;
 
@@ -1689,8 +1826,27 @@ void FNsBonsaiReviewManager::MarkResolved(const FSoftObjectPath& ObjectPath, boo
 
 void FNsBonsaiReviewManager::OpenReviewQueueNow()
 {
+    if (!IsMonitoringEnabled())
+    {
+        if (FSlateApplication::IsInitialized())
+        {
+            FNotificationInfo Info(NSLOCTEXT("NsBonsaiReview", "DisabledToast", "NsBonsai is disabled in settings."));
+            Info.bFireAndForget = true;
+            Info.bUseLargeFont = false;
+            Info.bUseSuccessFailIcons = false;
+            Info.ExpireDuration = 2.5f;
+            FSlateNotificationManager::Get().AddNotification(Info);
+        }
+        return;
+    }
+
+    ProcessSavedPackages();
+
+    FlushPendingToReviewQueue();
+
     if (const TSharedPtr<SWindow> ReviewWindowPinned = ReviewWindow.Pin())
     {
+        AppendReviewQueueToOpenWindow();
         ReviewWindowPinned->BringToFront(true);
         return;
     }
@@ -1716,6 +1872,66 @@ void FNsBonsaiReviewManager::OpenReviewQueueNow()
     OpenReviewPopup();
 }
 
+
+void FNsBonsaiReviewManager::OpenReviewForAssets(const TArray<FAssetData>& Assets)
+{
+    if (!IsMonitoringEnabled())
+    {
+        if (FSlateApplication::IsInitialized())
+        {
+            FNotificationInfo Info(NSLOCTEXT("NsBonsaiReview", "DisabledToast", "NsBonsai is disabled in settings."));
+            Info.bFireAndForget = true;
+            Info.bUseLargeFont = false;
+            Info.bUseSuccessFailIcons = false;
+            Info.ExpireDuration = 2.5f;
+            FSlateNotificationManager::Get().AddNotification(Info);
+        }
+        return;
+    }
+
+    for (const FAssetData& Asset : Assets)
+    {
+        if (!Asset.IsValid())
+        {
+            continue;
+        }
+
+        const FSoftObjectPath ObjectPath = Asset.GetSoftObjectPath();
+        if (!ObjectPath.IsValid() || IsObjectPathQueuedOrVisible(ObjectPath))
+        {
+            continue;
+        }
+
+        QueuedPaths.Add(ObjectPath);
+        ReviewQueue.Add(Asset);
+    }
+
+    if (ReviewWindow.IsValid())
+    {
+        AppendReviewQueueToOpenWindow();
+        return;
+    }
+
+    if (ReviewQueue.Num() == 0)
+    {
+        if (FSlateApplication::IsInitialized())
+        {
+            FNotificationInfo Info(NSLOCTEXT("NsBonsaiReview", "SelectionEmptyToast", "No valid assets selected for Bonsai review."));
+            Info.bFireAndForget = true;
+            Info.bUseLargeFont = false;
+            Info.bUseSuccessFailIcons = false;
+            Info.ExpireDuration = 2.5f;
+            FSlateNotificationManager::Get().AddNotification(Info);
+        }
+        return;
+    }
+
+    bSuppressAutoPopup = false;
+    SuppressedQueueCount = 0;
+    bPopupScheduled = false;
+    PopupOpenAtTime = 0.0;
+    OpenReviewPopup();
+}
 void FNsBonsaiReviewManager::SnoozeForMinutes(double Minutes)
 {
     const double SnoozeSeconds = FMath::Max(0.0, Minutes) * 60.0;
@@ -1767,6 +1983,7 @@ void FNsBonsaiReviewManager::Shutdown()
     NextToastAllowedTime = 0.0;
     bSuppressAutoPopup = false;
     SuppressedQueueCount = 0;
+    bRefocusReviewWindowAfterRename = false;
 }
 
 void FNsBonsaiReviewManager::TrackPending(const FSoftObjectPath& Path, FName PackageName)
@@ -1780,7 +1997,7 @@ void FNsBonsaiReviewManager::TrackPending(const FSoftObjectPath& Path, FName Pac
 
 void FNsBonsaiReviewManager::OnAssetAdded(const FAssetData& AssetData)
 {
-    if (IsApplyingRename())
+    if (IsApplyingRename() || !IsMonitoringEnabled())
     {
         return;
     }
@@ -1797,7 +2014,7 @@ void FNsBonsaiReviewManager::OnAssetAdded(const FAssetData& AssetData)
 
 void FNsBonsaiReviewManager::OnAssetRemoved(const FAssetData& AssetData)
 {
-    if (IsApplyingRename())
+    if (IsApplyingRename() || !IsMonitoringEnabled())
     {
         return;
     }
@@ -1816,35 +2033,89 @@ void FNsBonsaiReviewManager::OnAssetRemoved(const FAssetData& AssetData)
     {
         return InAsset.GetSoftObjectPath() == Path;
     });
+    QueuedPaths.Remove(Path);
 }
 
 void FNsBonsaiReviewManager::OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath)
 {
-    if (IsApplyingRename())
+    if (IsApplyingRename() || !IsMonitoringEnabled())
     {
         return;
     }
 
     const FSoftObjectPath OldPath(OldObjectPath);
+    const FSoftObjectPath NewPath = AssetData.GetSoftObjectPath();
+
     for (TPair<FName, TSet<FSoftObjectPath>>& Pair : PendingByPackage)
     {
         Pair.Value.Remove(OldPath);
     }
 
-    if (ShouldSkipCompliantAssets())
+    const bool bSkipRenamedAsset = ShouldSkipCompliantAssets() && IsAssetCompliant(AssetData);
+
+    bool bUpdatedOpenWindow = false;
+    if (const TSharedPtr<SNsBonsaiReviewWindow> ReviewWidgetPinned = ReviewWindowWidget.Pin())
     {
-        if (IsAssetCompliant(AssetData))
+        bUpdatedOpenWindow = bSkipRenamedAsset
+            ? ReviewWidgetPinned->RemoveRowByObjectPath(OldPath)
+            : ReviewWidgetPinned->HandleExternalRename(OldPath, AssetData);
+    }
+
+    bool bUpdatedQueuedReview = false;
+    for (FAssetData& QueuedAsset : ReviewQueue)
+    {
+        if (QueuedAsset.GetSoftObjectPath() == OldPath)
         {
-            return;
+            QueuedAsset = AssetData;
+            bUpdatedQueuedReview = true;
         }
     }
 
-    TrackPending(AssetData.GetSoftObjectPath(), AssetData.PackageName);
+    if (bSkipRenamedAsset)
+    {
+        ReviewQueue.RemoveAll([&OldPath, &NewPath](const FAssetData& InAsset)
+        {
+            const FSoftObjectPath Path = InAsset.GetSoftObjectPath();
+            return Path == OldPath || Path == NewPath;
+        });
+    }
+
+    const bool bWasQueued = QueuedPaths.Contains(OldPath);
+    if (bWasQueued)
+    {
+        QueuedPaths.Remove(OldPath);
+    }
+
+    if (bSkipRenamedAsset)
+    {
+        if (NewPath.IsValid())
+        {
+            QueuedPaths.Remove(NewPath);
+        }
+        return;
+    }
+
+    if (bWasQueued && NewPath.IsValid())
+    {
+        QueuedPaths.Add(NewPath);
+    }
+
+    if (bUpdatedOpenWindow || bUpdatedQueuedReview || (bWasQueued && NewPath.IsValid()))
+    {
+        return;
+    }
+
+    if (!NewPath.IsValid())
+    {
+        return;
+    }
+
+    TrackPending(NewPath, AssetData.PackageName);
 }
 
 void FNsBonsaiReviewManager::OnPackageSaved(const FString&, UPackage* Package, FObjectPostSaveContext)
 {
-    if (IsApplyingRename() || !Package)
+    if (IsApplyingRename() || !IsMonitoringEnabled() || !Package)
     {
         return;
     }
@@ -1854,7 +2125,35 @@ void FNsBonsaiReviewManager::OnPackageSaved(const FString&, UPackage* Package, F
 
 bool FNsBonsaiReviewManager::Tick(float)
 {
+    if (!IsMonitoringEnabled())
+    {
+        DisableRuntimeState();
+        return true;
+    }
+
     ProcessSavedPackages();
+
+    if (bRefocusReviewWindowAfterRename && !IsApplyingRename())
+    {
+        const TSharedPtr<SWindow> ReviewWindowPinned = ReviewWindow.Pin();
+        if (!ReviewWindowPinned.IsValid())
+        {
+            bRefocusReviewWindowAfterRename = false;
+        }
+        else if (!FSlateApplication::IsInitialized() || !FSlateApplication::Get().GetActiveModalWindow().IsValid())
+        {
+            ReviewWindowPinned->Restore();
+            ReviewWindowPinned->BringToFront(true);
+            bRefocusReviewWindowAfterRename = false;
+        }
+    }
+
+    if (!IsAutomaticPopupEnabled())
+    {
+        bPopupScheduled = false;
+        PopupOpenAtTime = 0.0;
+        return true;
+    }
 
     if (!bPopupScheduled)
     {
@@ -1915,7 +2214,7 @@ void FNsBonsaiReviewManager::EnqueueSavedPackageAssets(FName PackageName)
     bool bQueuedAny = false;
     for (const FSoftObjectPath& Path : *PendingObjectPaths)
     {
-        if (QueuedPaths.Contains(Path))
+        if (IsObjectPathQueuedOrVisible(Path))
         {
             ResolvedPaths.Add(Path);
             continue;
@@ -1952,7 +2251,14 @@ void FNsBonsaiReviewManager::EnqueueSavedPackageAssets(FName PackageName)
 
     if (bQueuedAny)
     {
-        RequestPopupDebounced();
+        if (ReviewWindow.IsValid())
+        {
+            AppendReviewQueueToOpenWindow();
+        }
+        else
+        {
+            RequestPopupDebounced();
+        }
     }
 }
 
@@ -1970,9 +2276,69 @@ void FNsBonsaiReviewManager::ProcessSavedPackages()
     }
 }
 
+
+void FNsBonsaiReviewManager::FlushPendingToReviewQueue()
+{
+    if (PendingByPackage.Num() == 0)
+    {
+        return;
+    }
+
+    IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+    const bool bSkipCompliantAssets = ShouldSkipCompliantAssets();
+
+    TArray<FName> PackageNames;
+    PendingByPackage.GetKeys(PackageNames);
+    for (const FName PackageName : PackageNames)
+    {
+        TSet<FSoftObjectPath>* PendingObjectPaths = PendingByPackage.Find(PackageName);
+        if (!PendingObjectPaths || PendingObjectPaths->Num() == 0)
+        {
+            PendingByPackage.Remove(PackageName);
+            continue;
+        }
+
+        TSet<FSoftObjectPath> ResolvedPaths;
+        for (const FSoftObjectPath& Path : *PendingObjectPaths)
+        {
+            if (IsObjectPathQueuedOrVisible(Path))
+            {
+                ResolvedPaths.Add(Path);
+                continue;
+            }
+
+            const FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(Path, false, true);
+            if (!AssetData.IsValid())
+            {
+                continue;
+            }
+
+            if (bSkipCompliantAssets && IsAssetCompliant(AssetData))
+            {
+                ResolvedPaths.Add(Path);
+                continue;
+            }
+
+            QueuedPaths.Add(Path);
+            ReviewQueue.Add(AssetData);
+            ResolvedPaths.Add(Path);
+        }
+
+        for (const FSoftObjectPath& ResolvedPath : ResolvedPaths)
+        {
+            PendingObjectPaths->Remove(ResolvedPath);
+        }
+
+        if (PendingObjectPaths->Num() == 0)
+        {
+            PendingByPackage.Remove(PackageName);
+            SavedPackagesToProcess.Remove(PackageName);
+        }
+    }
+}
 void FNsBonsaiReviewManager::RequeueAssets(const TArray<FAssetData>& Assets)
 {
-    if (Assets.Num() == 0)
+    if (!IsMonitoringEnabled() || Assets.Num() == 0)
     {
         return;
     }
@@ -2003,6 +2369,11 @@ void FNsBonsaiReviewManager::RequeueAssets(const TArray<FAssetData>& Assets)
 
 void FNsBonsaiReviewManager::RequestPopupDebounced()
 {
+    if (!IsAutomaticPopupEnabled())
+    {
+        return;
+    }
+
     if (ReviewQueue.Num() == 0)
     {
         return;
@@ -2040,7 +2411,7 @@ void FNsBonsaiReviewManager::RequestPopupDebounced()
 
 void FNsBonsaiReviewManager::ShowQueuedToast()
 {
-    if (!FSlateApplication::IsInitialized())
+    if (!IsAutomaticPopupEnabled() || !FSlateApplication::IsInitialized())
     {
         return;
     }
@@ -2080,6 +2451,59 @@ double FNsBonsaiReviewManager::GetPopupCooldownSeconds() const
     const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
     return FMath::Max(0.0, static_cast<double>(Settings ? Settings->PopupCooldownSeconds : 2.0f));
 }
+
+bool FNsBonsaiReviewManager::IsMonitoringEnabled() const
+{
+    const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
+    return !Settings || Settings->ReviewTriggerMode != ENsBonsaiReviewTriggerMode::Disabled;
+}
+
+bool FNsBonsaiReviewManager::IsAutomaticPopupEnabled() const
+{
+    const UNsBonsaiSettings* Settings = GetDefault<UNsBonsaiSettings>();
+    return !Settings || Settings->ReviewTriggerMode == ENsBonsaiReviewTriggerMode::Automatic;
+}
+
+void FNsBonsaiReviewManager::DisableRuntimeState()
+{
+    if (const TSharedPtr<SWindow> ReviewWindowPinned = ReviewWindow.Pin())
+    {
+        ReviewWindowPinned->RequestDestroyWindow();
+    }
+
+    ReviewWindow.Reset();
+    ReviewWindowWidget.Reset();
+    PendingByPackage.Reset();
+    SavedPackagesToProcess.Reset();
+    ReviewQueue.Reset();
+    QueuedPaths.Reset();
+    bPopupScheduled = false;
+    PopupOpenAtTime = 0.0;
+    SnoozedUntilTime = 0.0;
+    bSuppressAutoPopup = false;
+    SuppressedQueueCount = 0;
+    bRefocusReviewWindowAfterRename = false;
+}
+
+bool FNsBonsaiReviewManager::IsObjectPathQueuedOrVisible(const FSoftObjectPath& ObjectPath) const
+{
+    if (!ObjectPath.IsValid())
+    {
+        return false;
+    }
+
+    if (ReviewQueue.ContainsByPredicate([&ObjectPath](const FAssetData& InAsset)
+    {
+        return InAsset.GetSoftObjectPath() == ObjectPath;
+    }))
+    {
+        return true;
+    }
+
+    const TSharedPtr<SNsBonsaiReviewWindow> ReviewWidgetPinned = ReviewWindowWidget.Pin();
+    return ReviewWidgetPinned.IsValid() && ReviewWidgetPinned->HasRowByObjectPath(ObjectPath);
+}
+
 void FNsBonsaiReviewManager::AppendReviewQueueToOpenWindow()
 {
     if (ReviewQueue.Num() == 0)

@@ -22,6 +22,7 @@ UNsBonsaiSettings::UNsBonsaiSettings()
     , bCategoriesMustBelongToDomain(true)
     , bAllowFreeCategoryTextIfNoCategories(false)
     , bSkipCompliantAssets(true)
+    , ReviewTriggerMode(ENsBonsaiReviewTriggerMode::Automatic)
     , PopupThresholdCount(1)
     , PopupCooldownSeconds(2.0f)
     , bAutoCloseWindowWhenEmpty(true)
@@ -176,6 +177,15 @@ bool UNsBonsaiSettings::NormalizeAndValidateSettings(TArray<FString>& OutValidat
 
     PopupThresholdCount = FMath::Clamp(PopupThresholdCount, 1, 1000);
     PopupCooldownSeconds = FMath::Max(0.0f, PopupCooldownSeconds);
+
+    if (ReviewTriggerMode != ENsBonsaiReviewTriggerMode::Automatic
+        && ReviewTriggerMode != ENsBonsaiReviewTriggerMode::ManualOnly
+        && ReviewTriggerMode != ENsBonsaiReviewTriggerMode::Disabled)
+    {
+        ReviewTriggerMode = ENsBonsaiReviewTriggerMode::ManualOnly;
+        OutValidationMessages.Add(TEXT("NsBonsai: Invalid Review Trigger Mode detected and reset to Manual Only."));
+        bChanged = true;
+    }
 
     {
         TSet<FSoftClassPath> SeenClassPaths;
