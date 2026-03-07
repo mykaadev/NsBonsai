@@ -1,4 +1,4 @@
-// Copyright (C) 2025 nulled.softworks. All rights reserved.
+﻿// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
 #include "NsBonsaiReviewManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -8,6 +8,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
+#include "Interfaces/IMainFrameModule.h"
 #include "IAssetTools.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/FileHelper.h"
@@ -30,6 +31,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
@@ -102,6 +104,10 @@ public:
                     {
                         return bDryRunEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
                     })
+                    .IsEnabled_Lambda([this]()
+                    {
+                        return !bRenameInProgress;
+                    })
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState NewState)
                     {
                         bDryRunEnabled = (NewState == ECheckBoxState::Checked);
@@ -121,7 +127,7 @@ public:
                     })
                     .IsEnabled_Lambda([this]
                     {
-                        return DeferredRenames.Num() > 0;
+                        return !bRenameInProgress && DeferredRenames.Num() > 0;
                     })
                     .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                     .ContentPadding(FMargin(8, 2))
@@ -136,9 +142,41 @@ public:
                     SNew(SButton)
                     .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                     .ContentPadding(FMargin(8, 2))
+                    .IsEnabled_Lambda([this]()
+                    {
+                        return !bRenameInProgress;
+                    })
                     .ToolTipText(FText::FromString(TEXT("Snooze review popups for 10 minutes.")))
                     .Text(FText::FromString(TEXT("Snooze 10m")))
                     .OnClicked(this, &SNsBonsaiReviewWindow::OnSnoozeClicked)
+                ]
+            ]
+            + SVerticalBox::Slot().AutoHeight().Padding(8, 0, 8, 8)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    SNew(SProgressBar)
+                    .Visibility_Lambda([this]
+                    {
+                        return bRenameInProgress ? EVisibility::Visible : EVisibility::Collapsed;
+                    })
+                    .Percent_Lambda([this]
+                    {
+                        return RenameProgressFraction;
+                    })
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0)
+                [
+                    SNew(STextBlock)
+                    .Visibility_Lambda([this]
+                    {
+                        return RenameProgressLabel.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+                    })
+                    .Text_Lambda([this]
+                    {
+                        return FText::FromString(RenameProgressLabel);
+                    })
                 ]
             ]
         ];
@@ -449,6 +487,23 @@ private:
         FName Category;
     };
 
+    enum class ERenameExecutionMode : uint8
+    {
+        None,
+        ConfirmPlans,
+        DeferredExecute,
+    };
+
+    struct FPendingRenameExecution
+    {
+        ERenameExecutionMode Mode = ERenameExecutionMode::None;
+        TArray<FRenamePlan> Plans;
+        TArray<FDeferredRenameEntry> DeferredEntries;
+        TArray<FAssetRenameData> Renames;
+        int32 InitialRowCount = 0;
+    };
+
+
     bool IsTypeColumnEnabled() const
     {
         return Settings && Settings->bShowTypeColumn && Settings->IsComponentEnabled(ENsBonsaiNameComponent::Type);
@@ -619,7 +674,7 @@ private:
                 Owner->EnsureCategoryOptions(Row);
                 return SNew(SComboBox<TSharedPtr<FName>>)
                     .OptionsSource(&Owner->CategoryOptionsByRow.FindOrAdd(Row))
-                    .IsEnabled_Lambda([this]{ return Owner->CanEditCategory(Row); })
+                   .IsEnabled_Lambda([this]{ return Owner->CanEditCategory(Row); })
                     .ToolTipText(FText::FromString(TEXT("Select category token. If multiple rows are selected, applies to selection.")))
                     .OnGenerateWidget_Lambda([this](TSharedPtr<FName> Name)
                     {
@@ -666,7 +721,7 @@ private:
                 return SNew(SButton)
                     .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                     .ContentPadding(FMargin(4, 2))
-                    .IsEnabled_Lambda([this]{ return Owner->CanConfirmRow(Row); })
+                   .IsEnabled_Lambda([this]{ return !Owner->bRenameInProgress && Owner->CanConfirmRow(Row); })
                     .ToolTipText(FText::FromString(TEXT("Rename now and remove row.")))
                     .OnClicked_Lambda([this]{ return Owner->OnConfirmClicked(Row); })
                     [
@@ -678,6 +733,7 @@ private:
                 return SNew(SButton)
                     .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                     .ContentPadding(FMargin(4, 2))
+                    .IsEnabled_Lambda([this]{ return !Owner->bRenameInProgress; })
                     .ToolTipText(FText::FromString(TEXT("Ignore this asset (won't be renamed).")))
                     .OnClicked_Lambda([this]{ return Owner->OnIgnoreClicked(Row); })
                     [
@@ -1326,8 +1382,6 @@ private:
             RowPaths.Remove(Row->ObjectPath);
         }
 
-        RebuildAllPreviews();
-
         if (ListView.IsValid())
         {
             ListView->ClearSelection();
@@ -1337,6 +1391,11 @@ private:
 
     FReply OnIgnoreClicked(const TSharedPtr<FRowModel>& FocusRow)
     {
+        if (bRenameInProgress)
+        {
+            return FReply::Handled();
+        }
+
         const int32 InitialRowCount = Rows.Num();
         TArray<TSharedPtr<FRowModel>> Targets;
         if (FocusRow.IsValid())
@@ -1443,26 +1502,236 @@ private:
 
         FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
         FScopedTransaction RenameTransaction(NSLOCTEXT("NsBonsaiReview", "RenameTransaction", "NsBonsai Rename Assets"));
+        const bool bRenameCallSucceeded = AssetToolsModule.Get().RenameAssets(Renames);
+        return bRenameCallSucceeded;
+    }
+
+    void StartRenameExecution(FPendingRenameExecution&& Execution, const FString& ProgressLabel)
+    {
+        if (bRenameInProgress)
+        {
+            return;
+        }
+
+        PendingRenameExecution = MoveTemp(Execution);
+        bRenameInProgress = true;
+        RenameProgressFraction = 0.05f;
+        RenameProgressLabel = ProgressLabel;
+        RequestRefresh();
+
+        if (!RenameExecutionTimerHandle.IsValid())
+        {
+            RenameExecutionTimerHandle = RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SNsBonsaiReviewWindow::HandleRenameExecutionTimer));
+        }
+    }
+
+    void ApplyDeferredRenameExecutionResults(const FPendingRenameExecution& Execution)
+    {
+        IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+        bool bTouchedUserSettings = false;
+        int32 SuccessCount = 0;
+        int32 FailCount = 0;
+        TSet<FSoftObjectPath> SuccessfulOldPaths;
+
+        const int32 TotalEntries = Execution.DeferredEntries.Num();
+        int32 ProcessedEntries = 0;
+        for (const FDeferredRenameEntry& Deferred : Execution.DeferredEntries)
+        {
+            ++ProcessedEntries;
+            RenameProgressFraction = 0.6f + (0.4f * (static_cast<float>(ProcessedEntries) / static_cast<float>(FMath::Max(1, TotalEntries))));
+
+            const bool bSucceeded = (Deferred.OldPath == Deferred.NewPath) || AssetRegistry.GetAssetByObjectPath(Deferred.NewPath, false).IsValid();
+            AppendRenameLog(Deferred.OldPath.ToString(), Deferred.NewPath.ToString(), bSucceeded ? TEXT("Renamed") : TEXT("RenameFailed"));
+            if (bSucceeded)
+            {
+                ++SuccessCount;
+                SuccessfulOldPaths.Add(Deferred.OldPath);
+                UserSettings->TouchDomain(Deferred.Domain);
+                UserSettings->TouchCategory(Deferred.Category);
+                bTouchedUserSettings = true;
+            }
+            else
+            {
+                ++FailCount;
+            }
+        }
+
+        if (SuccessfulOldPaths.Num() > 0)
+        {
+            DeferredRenames.RemoveAll([&SuccessfulOldPaths](const FDeferredRenameEntry& Entry)
+            {
+                return SuccessfulOldPaths.Contains(Entry.OldPath);
+            });
+        }
+
+        if (bTouchedUserSettings)
+        {
+            UserSettings->Save();
+        }
+
+        RenameProgressLabel = FString::Printf(TEXT("Renamed %d / %d assets (%d failed)."), SuccessCount, TotalEntries, FailCount);
+    }
+
+    void ApplyConfirmRenameExecutionResults(const FPendingRenameExecution& Execution)
+    {
+        IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+        TArray<TSharedPtr<FRowModel>> SuccessfulRows;
+        bool bTouchedUserSettings = false;
+        int32 SuccessCount = 0;
+        int32 FailCount = 0;
+
+        const int32 TotalPlans = Execution.Plans.Num();
+        int32 ProcessedPlans = 0;
+        for (const FRenamePlan& Plan : Execution.Plans)
+        {
+            ++ProcessedPlans;
+            RenameProgressFraction = 0.6f + (0.4f * (static_cast<float>(ProcessedPlans) / static_cast<float>(FMath::Max(1, TotalPlans))));
+
+            if (!Plan.Row.IsValid())
+            {
+                continue;
+            }
+
+            const bool bSucceeded = !Plan.bNeedsRename || AssetRegistry.GetAssetByObjectPath(Plan.NewPath, false).IsValid();
+            if (bSucceeded)
+            {
+                ++SuccessCount;
+                if (Manager)
+                {
+                    Manager->MarkResolved(Plan.NewPath);
+                }
+                UserSettings->TouchDomain(Plan.Row->SelectedDomain);
+                UserSettings->TouchCategory(Plan.Row->SelectedCategory);
+                bTouchedUserSettings = true;
+                SuccessfulRows.Add(Plan.Row);
+                AppendRenameLog(Plan.OldPath.ToString(), Plan.NewPath.ToString(), Plan.bNeedsRename ? TEXT("Renamed") : TEXT("NoOp"));
+            }
+            else
+            {
+                ++FailCount;
+                Plan.Row->bRenameBlockedConflict = true;
+                Plan.Row->RenameBlockedReason = TEXT("Rename failed or destination remained in conflict.");
+                AppendRenameLog(Plan.OldPath.ToString(), Plan.NewPath.ToString(), TEXT("RenameFailed"));
+            }
+        }
+
+        if (bTouchedUserSettings)
+        {
+            UserSettings->Save();
+        }
+        if (SuccessfulRows.Num() > 0)
+        {
+            ConfirmedCount += SuccessfulRows.Num();
+            RemoveRows(SuccessfulRows, true);
+        }
+        if (Execution.InitialRowCount == 1 && Rows.Num() == 0 && Settings->bAutoCloseWindowWhenEmpty)
+        {
+            CloseWindow();
+        }
+
+        RenameProgressLabel = FString::Printf(TEXT("Renamed %d / %d assets (%d failed)."), SuccessCount, TotalPlans, FailCount);
+    }
+
+    EActiveTimerReturnType HandleRenameExecutionTimer(double, float)
+    {
+        if (!PendingRenameExecution.IsSet())
+        {
+            bRenameInProgress = false;
+            RenameExecutionTimerHandle.Reset();
+            if (Manager)
+            {
+                Manager->SetApplyingRename(false);
+            }
+            return EActiveTimerReturnType::Stop;
+        }
+
+        FPendingRenameExecution Execution = MoveTemp(PendingRenameExecution.GetValue());
+        PendingRenameExecution.Reset();
+
         if (Manager)
         {
             Manager->SetApplyingRename(true);
         }
-        const bool bRenameCallSucceeded = AssetToolsModule.Get().RenameAssets(Renames);
+
+        RunRenameAssetsWithTransaction(Execution.Renames);
+        RequestPostRenameRefocus();
+        RenameProgressFraction = 0.6f;
+
+        if (Execution.Mode == ERenameExecutionMode::DeferredExecute)
+        {
+            ApplyDeferredRenameExecutionResults(Execution);
+        }
+        else if (Execution.Mode == ERenameExecutionMode::ConfirmPlans)
+        {
+            ApplyConfirmRenameExecutionResults(Execution);
+        }
+
         if (Manager)
         {
             Manager->SetApplyingRename(false);
         }
-        return bRenameCallSucceeded;
+
+        bRenameInProgress = false;
+        RenameProgressFraction = 1.0f;
+        RequestRefresh();
+        RenameExecutionTimerHandle.Reset();
+        return EActiveTimerReturnType::Stop;
+    }
+
+    void RequestPostRenameRefocus()
+    {
+        if (!ParentWindow.IsValid() || !FSlateApplication::IsInitialized())
+        {
+            return;
+        }
+
+        PostRenameRefocusUntilTime = FPlatformTime::Seconds() + 2.0;
+        if (PostRenameRefocusTimerHandle.IsValid())
+        {
+            return;
+        }
+
+        PostRenameRefocusTimerHandle = RegisterActiveTimer(0.1f, FWidgetActiveTimerDelegate::CreateSP(this, &SNsBonsaiReviewWindow::HandlePostRenameRefocusTimer));
+    }
+
+    EActiveTimerReturnType HandlePostRenameRefocusTimer(double, float)
+    {
+        if (!ParentWindow.IsValid() || !FSlateApplication::IsInitialized())
+        {
+            PostRenameRefocusTimerHandle.Reset();
+            return EActiveTimerReturnType::Stop;
+        }
+
+        if (FPlatformTime::Seconds() > PostRenameRefocusUntilTime)
+        {
+            PostRenameRefocusTimerHandle.Reset();
+            return EActiveTimerReturnType::Stop;
+        }
+
+        if (FSlateApplication::Get().GetActiveModalWindow().IsValid())
+        {
+            return EActiveTimerReturnType::Continue;
+        }
+
+        const TSharedPtr<SWindow> ReviewWindowPinned = ParentWindow.Pin();
+        if (!ReviewWindowPinned.IsValid())
+        {
+            PostRenameRefocusTimerHandle.Reset();
+            return EActiveTimerReturnType::Stop;
+        }
+
+        ReviewWindowPinned->BringToFront(true);
+        PostRenameRefocusTimerHandle.Reset();
+        return EActiveTimerReturnType::Stop;
     }
 
     FReply OnExecuteRenamesClicked()
     {
-        if (DeferredRenames.Num() == 0)
+        if (bRenameInProgress || DeferredRenames.Num() == 0)
         {
             return FReply::Handled();
         }
 
-        IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
         TArray<FAssetRenameData> Renames;
         for (const FDeferredRenameEntry& Deferred : DeferredRenames)
         {
@@ -1472,41 +1741,30 @@ private:
             }
         }
 
-        RunRenameAssetsWithTransaction(Renames);
-
-        bool bTouchedUserSettings = false;
-        TArray<int32> SuccessfulIndices;
-        for (int32 Index = 0; Index < DeferredRenames.Num(); ++Index)
+        if (Renames.Num() == 0)
         {
-            const FDeferredRenameEntry& Deferred = DeferredRenames[Index];
-            const bool bSucceeded = (Deferred.OldPath == Deferred.NewPath) || AssetRegistry.GetAssetByObjectPath(Deferred.NewPath, false).IsValid();
-            AppendRenameLog(Deferred.OldPath.ToString(), Deferred.NewPath.ToString(), bSucceeded ? TEXT("Renamed") : TEXT("RenameFailed"));
-            if (bSucceeded)
-            {
-                UserSettings->TouchDomain(Deferred.Domain);
-                UserSettings->TouchCategory(Deferred.Category);
-                bTouchedUserSettings = true;
-                SuccessfulIndices.Add(Index);
-            }
+            return FReply::Handled();
         }
 
-        for (int32 RemoveIdx = SuccessfulIndices.Num() - 1; RemoveIdx >= 0; --RemoveIdx)
-        {
-            DeferredRenames.RemoveAt(SuccessfulIndices[RemoveIdx]);
-        }
+        FPendingRenameExecution Execution;
+        Execution.Mode = ERenameExecutionMode::DeferredExecute;
+        Execution.DeferredEntries = DeferredRenames;
+        Execution.Renames = MoveTemp(Renames);
 
-        if (bTouchedUserSettings)
-        {
-            UserSettings->Save();
-        }
-        RequestRefresh();
+        const int32 RenameCount = Execution.Renames.Num();
+        StartRenameExecution(MoveTemp(Execution), FString::Printf(TEXT("Renaming %d assets..."), RenameCount));
         return FReply::Handled();
     }
 
     FReply OnConfirmClicked(const TSharedPtr<FRowModel>& FocusRow)
     {
+        if (bRenameInProgress)
+        {
+            return FReply::Handled();
+        }
+
         const int32 InitialRowCount = Rows.Num();
-        RebuildAllPreviews();
+        RenameProgressLabel.Reset();
 
         TArray<TSharedPtr<FRowModel>> Targets;
         if (FocusRow.IsValid())
@@ -1612,53 +1870,23 @@ private:
                 Renames.Emplace(Plan.OldPath, Plan.NewPath, false, true);
             }
         }
-        RunRenameAssetsWithTransaction(Renames);
 
-        IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-        TArray<TSharedPtr<FRowModel>> SuccessfulRows;
-        bool bTouchedUserSettings = false;
-        for (const FRenamePlan& Plan : Plans)
+        FPendingRenameExecution Execution;
+        Execution.Mode = ERenameExecutionMode::ConfirmPlans;
+        Execution.Plans = MoveTemp(Plans);
+        Execution.InitialRowCount = InitialRowCount;
+        Execution.Renames = MoveTemp(Renames);
+
+        if (Execution.Renames.Num() == 0)
         {
-            if (!Plan.Row.IsValid())
-            {
-                continue;
-            }
-
-            const bool bSucceeded = !Plan.bNeedsRename || AssetRegistry.GetAssetByObjectPath(Plan.NewPath, false).IsValid();
-            if (bSucceeded)
-            {
-                if (Manager)
-                {
-                    Manager->MarkResolved(Plan.NewPath);
-                }
-                UserSettings->TouchDomain(Plan.Row->SelectedDomain);
-                UserSettings->TouchCategory(Plan.Row->SelectedCategory);
-                bTouchedUserSettings = true;
-                SuccessfulRows.Add(Plan.Row);
-                AppendRenameLog(Plan.OldPath.ToString(), Plan.NewPath.ToString(), Plan.bNeedsRename ? TEXT("Renamed") : TEXT("NoOp"));
-            }
-            else
-            {
-                Plan.Row->bRenameBlockedConflict = true;
-                Plan.Row->RenameBlockedReason = TEXT("Rename failed or destination remained in conflict.");
-                AppendRenameLog(Plan.OldPath.ToString(), Plan.NewPath.ToString(), TEXT("RenameFailed"));
-            }
+            RenameProgressFraction = 1.0f;
+            ApplyConfirmRenameExecutionResults(Execution);
+            RequestRefresh();
+            return FReply::Handled();
         }
 
-        if (bTouchedUserSettings)
-        {
-            UserSettings->Save();
-        }
-        if (SuccessfulRows.Num() > 0)
-        {
-            ConfirmedCount += SuccessfulRows.Num();
-            RemoveRows(SuccessfulRows, true);
-        }
-        if (InitialRowCount == 1 && Rows.Num() == 0 && Settings->bAutoCloseWindowWhenEmpty)
-        {
-            return CloseWindow();
-        }
-        RequestRefresh();
+        const int32 RenameCount = Execution.Renames.Num();
+        StartRenameExecution(MoveTemp(Execution), FString::Printf(TEXT("Renaming %d assets..."), RenameCount));
         return FReply::Handled();
     }
     FReply OnSnoozeClicked()
@@ -1796,9 +2024,18 @@ private:
     bool bEnableConflictPrecheck = true;
     bool bDryRunEnabled = false;
     bool bClosedBySnooze = false;
+    bool bRenameInProgress = false;
+    float RenameProgressFraction = 0.0f;
+    FString RenameProgressLabel;
+
     int32 ConfirmedCount = 0;
     int32 IgnoredCount = 0;
     TArray<FDeferredRenameEntry> DeferredRenames;
+    TOptional<FPendingRenameExecution> PendingRenameExecution;
+    TWeakPtr<FActiveTimerHandle> RenameExecutionTimerHandle;
+    double PostRenameRefocusUntilTime = 0.0;
+    TWeakPtr<FActiveTimerHandle> PostRenameRefocusTimerHandle;
+
 
     TArray<TSharedPtr<FRowModel>> Rows;
     TSet<FSoftObjectPath> RowPaths;
@@ -1871,7 +2108,6 @@ void FNsBonsaiReviewManager::OpenReviewQueueNow()
     PopupOpenAtTime = 0.0;
     OpenReviewPopup();
 }
-
 
 void FNsBonsaiReviewManager::OpenReviewForAssets(const TArray<FAssetData>& Assets)
 {
@@ -1983,7 +2219,6 @@ void FNsBonsaiReviewManager::Shutdown()
     NextToastAllowedTime = 0.0;
     bSuppressAutoPopup = false;
     SuppressedQueueCount = 0;
-    bRefocusReviewWindowAfterRename = false;
 }
 
 void FNsBonsaiReviewManager::TrackPending(const FSoftObjectPath& Path, FName PackageName)
@@ -2133,21 +2368,6 @@ bool FNsBonsaiReviewManager::Tick(float)
 
     ProcessSavedPackages();
 
-    if (bRefocusReviewWindowAfterRename && !IsApplyingRename())
-    {
-        const TSharedPtr<SWindow> ReviewWindowPinned = ReviewWindow.Pin();
-        if (!ReviewWindowPinned.IsValid())
-        {
-            bRefocusReviewWindowAfterRename = false;
-        }
-        else if (!FSlateApplication::IsInitialized() || !FSlateApplication::Get().GetActiveModalWindow().IsValid())
-        {
-            ReviewWindowPinned->Restore();
-            ReviewWindowPinned->BringToFront(true);
-            bRefocusReviewWindowAfterRename = false;
-        }
-    }
-
     if (!IsAutomaticPopupEnabled())
     {
         bPopupScheduled = false;
@@ -2275,7 +2495,6 @@ void FNsBonsaiReviewManager::ProcessSavedPackages()
         EnqueueSavedPackageAssets(PackageName);
     }
 }
-
 
 void FNsBonsaiReviewManager::FlushPendingToReviewQueue()
 {
@@ -2482,7 +2701,6 @@ void FNsBonsaiReviewManager::DisableRuntimeState()
     SnoozedUntilTime = 0.0;
     bSuppressAutoPopup = false;
     SuppressedQueueCount = 0;
-    bRefocusReviewWindowAfterRename = false;
 }
 
 bool FNsBonsaiReviewManager::IsObjectPathQueuedOrVisible(const FSoftObjectPath& ObjectPath) const
@@ -2592,7 +2810,24 @@ void FNsBonsaiReviewManager::OpenReviewPopup()
     Window->SetContent(ReviewWidget);
     ReviewWindow = Window;
     ReviewWindowWidget = ReviewWidget;
-    FSlateApplication::Get().AddWindow(Window);
+    TSharedPtr<SWindow> ParentForWindow;
+    if (IMainFrameModule* MainFrameModule = FModuleManager::GetModulePtr<IMainFrameModule>(TEXT("MainFrame")))
+    {
+        ParentForWindow = MainFrameModule->GetParentWindow();
+    }
+    if (!ParentForWindow.IsValid())
+    {
+        ParentForWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
+    }
+
+    if (ParentForWindow.IsValid())
+    {
+        FSlateApplication::Get().AddWindowAsNativeChild(Window, ParentForWindow.ToSharedRef());
+    }
+    else
+    {
+        FSlateApplication::Get().AddWindow(Window);
+    }
 }
 bool FNsBonsaiReviewManager::ShouldSkipCompliantAssets() const
 {

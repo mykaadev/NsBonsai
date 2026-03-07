@@ -32,8 +32,7 @@ public:
         bApplyingRename = bInApplyingRename;
         if (!bApplyingRename)
         {
-            ApplyingRenameCooldownUntil = FPlatformTime::Seconds() + 1.0;
-            bRefocusReviewWindowAfterRename = true;
+            ApplyingRenameCooldownUntil = FPlatformTime::Seconds() + 3.0;
         }
     }
 
@@ -164,9 +163,6 @@ private:
 
     /** End timestamp for the short post-rename callback guard cooldown. */
     double ApplyingRenameCooldownUntil = 0.0;
-
-    /** True when the review window should be restored/focused after rename-save churn settles. */
-    bool bRefocusReviewWindowAfterRename = false;
 
     /** Timestamp until which auto-popup opening remains snoozed. */
     double SnoozedUntilTime = 0.0;

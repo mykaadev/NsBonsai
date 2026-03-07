@@ -43,6 +43,7 @@ public class NsBonsai : ModuleRules
                 "UnrealEd",
                 "ToolMenus",
                 "ContentBrowser",
+                "MainFrame",
             }
         );
 
