@@ -52,7 +52,7 @@ Example:
 
   <!-- Showcase -->
 <div align="center">
-  <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Showcase.gif" width="400" />
+  <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Showcase.gif" width="700" />
 </div>
 
 ## 🎯 Why NsBonsai
