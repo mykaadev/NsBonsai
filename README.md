@@ -19,12 +19,12 @@
   <a href="#-summary">🌳 Summary</a> •
   <a href="#-why-nsbonsai">🎯 Why</a> •
   <a href="#-features">✨ Features</a> •
-  <a href="#-how-it-works">🧠 How it works</a> •
+  <a href="#-getting-started">🚀 Getting Started</a> •
   <a href="#-configuration">🧩 Configuration</a> •
+  <a href="#-how-it-works">🧠 How it works</a> •
   <a href="#-best-practices">📚 Best practices</a> •
   <a href="#-requirements">⚙️ Requirements</a> •
   <a href="#-installation">🛠️ Installation</a> •
-  <a href="#-getting-started">🚀 Getting Started</a> •
   <a href="#-credits">❤️ Credits</a> •
   <a href="#-support">📞 Support</a> •
   <a href="#-license">📃 License</a>
@@ -50,9 +50,9 @@ Example:
 > **Zero-diff by design:** NsBonsai does **not** write metadata into assets.
 > It only renames assets when you explicitly confirm.
 
+  <!-- Showcase -->
 <div align="center">
-  <!-- Replace with your own GIFs/screenshots -->
-  <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Showcase_Table.gif" width="800" />
+  <img src="https://github.com/mykaadev/NsBonsai/blob/main/Resources/Showcase.gif" width="400" />
 </div>
 
 ## 🎯 Why NsBonsai
@@ -72,30 +72,19 @@ NsBonsai focuses on:
 - **Non-invasive:** no asset metadata writes, no changes unless you confirm.
 - **Dynamic taxonomy (optional):** add Domains/Categories on the fly from dropdowns and use them immediately.
 
-## 🧠 How it works
-NsBonsai deliberately avoids “magic” folder rules. Instead it uses a simple token library and a predictable rename pipeline:
 
-### 1) Detect new assets (only after save)
-- Tracks newly created/imported assets via editor/AssetRegistry signals.
-- Uses package saved events so it only prompts once the asset is persisted.
-- Dedupes aggressively to avoid repeated entries and window spam.
+## 🚀 Getting Started
+1. Create/import an asset.
+2. Save the asset/package.
+3. NsBonsai opens the review table.
+4. Handle it!
 
-### 2) Build the preview name (deterministic)
-- Type token is resolved from **TypeRules** (class → prefix).
-- Domain/Category come from your token library.
-- AssetName is a free-form field (prefilled from original).
-- Variant is allocated collision-safe during rename.
-
-### 3) Rename safely
-- Uses Unreal’s **AssetTools** rename pipeline (redirector-safe, editor-friendly).
-- Guards against registry spam caused by renames so assets don’t re-queue or reopen windows.
-
-### 4) Compliance check (optional)
-When enabled, NsBonsai can skip enqueueing assets that already match your rules:
-- Valid Type token for the asset class
-- Known Domain/Category (and Category allowed under Domain if constrained)
-- Valid Variant suffix
-- Clean, sanitized AssetName
+### Table workflow
+- Select Domain + Category (bulk apply supported).
+- Edit AssetName (prefilled from original).
+- Verify live output.
+- ✅ Confirm renames immediately.
+- ❌ Ignore removes the row with no changes.
 
 ## 🧩 Configuration
 Open: `Edit → Project Settings → NsBonsai`
@@ -136,6 +125,32 @@ Map legacy tokens into canonical ones:
 +TokenNormalizationRules=(DeprecatedToken="Chars",CanonicalToken="Character")
 ```
 
+## 🧠 How it works
+NsBonsai deliberately avoids “magic” folder rules. Instead it uses a simple token library and a predictable rename pipeline:
+
+### 1) Detect new assets (only after save)
+- Tracks newly created/imported assets via editor/AssetRegistry signals.
+- Uses package saved events so it only prompts once the asset is persisted.
+- Dedupes aggressively to avoid repeated entries and window spam.
+
+### 2) Build the preview name (deterministic)
+- Type token is resolved from **TypeRules** (class → prefix).
+- Domain/Category come from your token library.
+- AssetName is a free-form field (prefilled from original).
+- Variant is allocated collision-safe during rename.
+
+### 3) Rename safely
+- Uses Unreal’s **AssetTools** rename pipeline (redirector-safe, editor-friendly).
+- Guards against registry spam caused by renames so assets don’t re-queue or reopen windows.
+
+### 4) Compliance check (optional)
+When enabled, NsBonsai can skip enqueueing assets that already match your rules:
+- Valid Type token for the asset class
+- Known Domain/Category (and Category allowed under Domain if constrained)
+- Valid Variant suffix
+- Clean, sanitized AssetName
+
+
 ## 📚 Best practices
 NsBonsai follows the common UE convention of **type prefixes + underscores**.
 If you want a broader style guide reference:
@@ -150,19 +165,6 @@ If you want a broader style guide reference:
 2. Copy the `NsBonsai` folder into your project’s `Plugins` directory (create it if it doesn’t exist).
 3. Regenerate project files.
 4. Open Unreal Editor and enable **NsBonsai** under `Edit → Plugins`, then restart.
-
-## 🚀 Getting Started
-1. Create/import an asset.
-2. Save the asset/package.
-3. NsBonsai opens the review table.
-4. Handle it!
-
-### Table workflow
-- Select Domain + Category (bulk apply supported).
-- Edit AssetName (prefilled from original).
-- Verify live output.
-- ✅ Confirm renames immediately.
-- ❌ Ignore removes the row with no changes.
 
 
 <!-- GH_ONLY_START -->
