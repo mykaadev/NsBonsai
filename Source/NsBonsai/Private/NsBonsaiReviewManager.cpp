@@ -1,16 +1,18 @@
-﻿// Copyright (C) 2025 nulled.softworks. All rights reserved.
+// Copyright (C) 2025 nulled.softworks. All rights reserved.
 
 #include "NsBonsaiReviewManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
 #include "Containers/Ticker.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
-#include "Interfaces/IMainFrameModule.h"
 #include "IAssetTools.h"
+#include "Interfaces/IMainFrameModule.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
@@ -18,7 +20,6 @@
 #include "NsBonsaiNameRules.h"
 #include "NsBonsaiSettings.h"
 #include "NsBonsaiUserSettings.h"
-#include "ObjectTools.h"
 #include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
 #include "UObject/ObjectSaveContext.h"
@@ -40,6 +41,9 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 
+/**
+ * Class that holds the review window
+ */
 class SNsBonsaiReviewWindow final : public SCompoundWidget
 {
 private:
@@ -1725,6 +1729,15 @@ private:
         return EActiveTimerReturnType::Stop;
     }
 
+
+    FAssetRenameData MakeRenameData(const FSoftObjectPath& OldPath, const FSoftObjectPath& NewPath) const
+    {
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
+        return FAssetRenameData(OldPath, NewPath, false);
+#else
+        return FAssetRenameData(OldPath, NewPath, false, true);
+#endif
+    }
     FReply OnExecuteRenamesClicked()
     {
         if (bRenameInProgress || DeferredRenames.Num() == 0)
@@ -1737,7 +1750,7 @@ private:
         {
             if (Deferred.OldPath.IsValid() && Deferred.NewPath.IsValid() && Deferred.OldPath != Deferred.NewPath)
             {
-                Renames.Emplace(Deferred.OldPath, Deferred.NewPath, false, true);
+                Renames.Add(MakeRenameData(Deferred.OldPath, Deferred.NewPath));
             }
         }
 
@@ -1867,7 +1880,7 @@ private:
         {
             if (Plan.bNeedsRename)
             {
-                Renames.Emplace(Plan.OldPath, Plan.NewPath, false, true);
+                Renames.Add(MakeRenameData(Plan.OldPath, Plan.NewPath));
             }
         }
 
@@ -2440,7 +2453,7 @@ void FNsBonsaiReviewManager::EnqueueSavedPackageAssets(FName PackageName)
             continue;
         }
 
-        const FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(Path, false, true);
+        const FAssetData AssetData = GetAssetDataByObjectPath(AssetRegistry, Path);
         if (!AssetData.IsValid())
         {
             continue;
@@ -2526,7 +2539,7 @@ void FNsBonsaiReviewManager::FlushPendingToReviewQueue()
                 continue;
             }
 
-            const FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(Path, false, true);
+            const FAssetData AssetData = GetAssetDataByObjectPath(AssetRegistry, Path);
             if (!AssetData.IsValid())
             {
                 continue;
@@ -2828,6 +2841,15 @@ void FNsBonsaiReviewManager::OpenReviewPopup()
     {
         FSlateApplication::Get().AddWindow(Window);
     }
+}
+
+FAssetData FNsBonsaiReviewManager::GetAssetDataByObjectPath(IAssetRegistry& AssetRegistry, const FSoftObjectPath& ObjectPath) const
+{
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
+    return AssetRegistry.GetAssetByObjectPath(ObjectPath, false);
+#else
+    return AssetRegistry.GetAssetByObjectPath(ObjectPath, false, true);
+#endif
 }
 bool FNsBonsaiReviewManager::ShouldSkipCompliantAssets() const
 {

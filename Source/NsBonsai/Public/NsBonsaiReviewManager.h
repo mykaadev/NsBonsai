@@ -10,6 +10,7 @@
 #include "UObject/SoftObjectPath.h"
 
 class UPackage;
+class IAssetRegistry;
 class SWindow;
 class SNsBonsaiReviewWindow;
 
@@ -124,6 +125,9 @@ private:
 
     /** Returns true when an asset already matches active naming rules. */
     bool IsAssetCompliant(const FAssetData& AssetData) const;
+
+    /** Resolves asset data by object path with cross-engine API compatibility. */
+    FAssetData GetAssetDataByObjectPath(IAssetRegistry& AssetRegistry, const FSoftObjectPath& ObjectPath) const;
 
     /** Pending object paths grouped by package until package save completes. */
     TMap<FName, TSet<FSoftObjectPath>> PendingByPackage;

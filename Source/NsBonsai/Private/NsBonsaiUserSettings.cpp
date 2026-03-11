@@ -43,6 +43,6 @@ void UNsBonsaiUserSettings::TouchRecent(TArray<TokenType>& Target, const TokenTy
 
     if (Target.Num() > MaxRecentTokens)
     {
-        Target.SetNum(MaxRecentTokens, EAllowShrinking::Yes);
+        Target.SetNum(MaxRecentTokens);
     }
 }
