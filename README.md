@@ -69,15 +69,12 @@ NsBonsai focuses on:
 - **Multi-select bulk apply:** Domain/Category edits apply to selected rows.
 - **Immediate actions:** ✅ rename now, ❌ ignore now.
 - **Smart AssetName prefill:** strips known structural tokens from original names.
-- **AssetName tools menu:** reset/original/prefill/acronyms/pascal/snake.
-- **Live final-name preview:** updates on every row edit.
 - **Collision-safe variant allocation:** `A..Z`, then `AA..`.
 - **Skip compliant assets:** migration-safe queue behavior.
 - **Trigger modes:** Automatic, Manual Only, Disabled.
-- **Noise controls:** threshold, cooldown, toast fallback, snooze.
+- **Noise controls:** threshold, cooldown, snooze.
 - **Manual actions:** Tools menu queue opener + Content Browser `Open with Bonsai`.
 - **Dry Run mode:** stage then execute renames in batch.
-- **Logging:** writes rename results to `Saved/Logs/NsBonsai_Rename.log`.
 
 ## 🚀 Getting Started
 1. Open `Edit -> Project Settings -> Ns Bonsai`.
