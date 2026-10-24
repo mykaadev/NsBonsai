@@ -25,6 +25,7 @@
   <a href="#-best-practices">📚 Best practices</a> •
   <a href="#-requirements">⚙️ Requirements</a> •
   <a href="#-installation">🛠️ Installation</a> •
+  <a href="#-documentation">📚 Documentation</a> •
   <a href="#-credits">❤️ Credits</a> •
   <a href="#-support">📞 Support</a> •
   <a href="#-license">📃 License</a>
@@ -251,6 +252,10 @@ Good style references:
 3. Regenerate project files.
 4. Enable **NsBonsai** in `Edit -> Plugins`.
 5. Restart editor.
+
+## 📚 Documentation
+- [User Guide](https://mykaadev.github.io/plugins/nsbonsai/user-guide/) – Setup, common tasks, settings, and debug tools.
+- [Technical Documentation](https://mykaadev.github.io/plugins/nsbonsai/tech-documentation/) – Architecture, lifetime, extension points, and tests.
 
 <!-- GH_ONLY_START -->
 ## ❤️ Credits
