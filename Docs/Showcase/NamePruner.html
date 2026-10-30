@@ -1,0 +1,102 @@
+<!-- Showcase for the website: the docs link to this file, and the site turns it into a name pruner. -->
+<!-- Examples: data-class is a class path from the type rules table. The first code element is the old name. -->
+<!-- Rules: a copy of Config/DefaultNsBonsai.ini. Keep them the same as the ini. -->
+<figure class="ns-bonsai" data-separator="_">
+  <figcaption>Pick an asset type and type an old asset name. The demo shows the name that the review window proposes, with the default settings and the shipped rules. Change the domain, the category, or the case of the asset name, as in the window.</figcaption>
+  <ul data-list="examples">
+    <li data-class="/Script/Engine.StaticMesh"><code>BP_Environment_Rock_Cliff_02</code> (StaticMesh) gives <code>SM_Environment_Rock_Cliff_02_A</code>. The wrong type token goes.</li>
+    <li data-class="/Script/Engine.Texture2D"><code>t_ui_Icon_HeartOutline</code> (Texture2D) gives <code>T_UI_Icon_HeartOutline_A</code>. The alias <code>ui</code> becomes <code>UI</code>.</li>
+    <li data-class="/Script/Engine.StaticMesh"><code>Props_Furniture_Chair_Wooden_FINAL</code> (StaticMesh) gives <code>SM_Props_Furniture_Chair_Wooden_A</code>. The type token comes first. <code>FINAL</code> is all capitals, so it counts as an old variant and goes.</li>
+    <li data-class="/Script/Engine.SoundWave"><code>Audio_UI_Click__03</code> (SoundWave) gives <code>S_Audio_UI_Click_03_A</code>. The double underscore goes.</li>
+    <li data-class="/Script/Engine.StaticMesh"><code>SM_Foliage_Tree_Birch_A</code> (StaticMesh) gives <code>SM_Foliage_Tree_Birch_A</code>. The name is already in the pattern.</li>
+    <li data-class="/Script/Engine.StaticMesh"><code>Boulder_big_01</code> (StaticMesh) gives <code>SM_AI_Behavior_Boulder_big_01_A</code>. The old name has no domain, so the window selects the first domain from A to Z. Pick the domain.</li>
+  </ul>
+  <details>
+    <summary>The rules: 39 type rules, 23 domains, and 8 aliases from <code>Config/DefaultNsBonsai.ini</code></summary>
+    <table data-list="types">
+      <thead>
+        <tr><th>Class</th><th>Type token</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>/Script/Engine.StaticMesh</td><td>SM</td></tr>
+        <tr><td>/Script/Engine.SkeletalMesh</td><td>SK</td></tr>
+        <tr><td>/Script/Engine.Skeleton</td><td>SKEL</td></tr>
+        <tr><td>/Script/Engine.PhysicsAsset</td><td>PHYS</td></tr>
+        <tr><td>/Script/Engine.Material</td><td>M</td></tr>
+        <tr><td>/Script/Engine.MaterialInstance</td><td>MI</td></tr>
+        <tr><td>/Script/Engine.MaterialFunction</td><td>MF</td></tr>
+        <tr><td>/Script/Engine.MaterialParameterCollection</td><td>MPC</td></tr>
+        <tr><td>/Script/Engine.Texture</td><td>T</td></tr>
+        <tr><td>/Script/Engine.Texture2D</td><td>T</td></tr>
+        <tr><td>/Script/Engine.TextureCube</td><td>TC</td></tr>
+        <tr><td>/Script/Engine.TextureRenderTarget2D</td><td>RT</td></tr>
+        <tr><td>/Script/Engine.TextureRenderTargetCube</td><td>RTC</td></tr>
+        <tr><td>/Script/Engine.ParticleSystem</td><td>PS</td></tr>
+        <tr><td>/Script/Niagara.NiagaraSystem</td><td>NS</td></tr>
+        <tr><td>/Script/Niagara.NiagaraEmitter</td><td>NE</td></tr>
+        <tr><td>/Script/Engine.AnimSequence</td><td>AS</td></tr>
+        <tr><td>/Script/Engine.AnimMontage</td><td>AM</td></tr>
+        <tr><td>/Script/Engine.AnimBlueprint</td><td>ABP</td></tr>
+        <tr><td>/Script/Engine.BlendSpace</td><td>BS</td></tr>
+        <tr><td>/Script/Engine.AimOffsetBlendSpace</td><td>AO</td></tr>
+        <tr><td>/Script/LevelSequence.LevelSequence</td><td>LS</td></tr>
+        <tr><td>/Script/Engine.DataTable</td><td>DT</td></tr>
+        <tr><td>/Script/Engine.CurveFloat</td><td>C</td></tr>
+        <tr><td>/Script/Engine.CurveVector</td><td>C</td></tr>
+        <tr><td>/Script/Engine.CurveLinearColor</td><td>C</td></tr>
+        <tr><td>/Script/Engine.CurveTable</td><td>CT</td></tr>
+        <tr><td>/Script/Engine.Font</td><td>Font</td></tr>
+        <tr><td>/Script/UMGEditor.WidgetBlueprint</td><td>WBP</td></tr>
+        <tr><td>/Script/Engine.SoundWave</td><td>S</td></tr>
+        <tr><td>/Script/Engine.SoundCue</td><td>SC</td></tr>
+        <tr><td>/Script/Engine.SoundAttenuation</td><td>SA</td></tr>
+        <tr><td>/Script/MetasoundEngine.MetaSoundSource</td><td>MSS</td></tr>
+        <tr><td>/Script/AIModule.BehaviorTree</td><td>BT</td></tr>
+        <tr><td>/Script/AIModule.BlackboardData</td><td>BB</td></tr>
+        <tr><td>/Script/AIModule.EnvQuery</td><td>EQS</td></tr>
+        <tr><td>/Script/EnhancedInput.InputAction</td><td>IA</td></tr>
+        <tr><td>/Script/EnhancedInput.InputMappingContext</td><td>IMC</td></tr>
+        <tr><td>/Script/Engine.Blueprint</td><td>BP</td></tr>
+      </tbody>
+    </table>
+    <p>Domains and their categories:</p>
+    <ul data-list="domains">
+      <li><b>UI</b> <span>Icon, Widget, Style, Font, HUD, Menu, Prompt, Notification, Input, Animation, Theme</span></li>
+      <li><b>Foliage</b> <span>Tree, Bush, Grass, Flower, Plant, Vine, Moss, Ivy, Leaf, Forest</span></li>
+      <li><b>Character</b> <span>Player, NPC, Enemy, Creature, Animation, Rig, Facial, Cosmetic, Voice, Equipment, Ability</span></li>
+      <li><b>Props</b> <span>Small, Large, Furniture, Decor, Industrial, Modular, Interactive, Wearable, Collectible</span></li>
+      <li><b>Environment</b> <span>Terrain, Rock, Water, Sky, Weather, Building, Road, Interior, Exterior, Landmark</span></li>
+      <li><b>VFX</b> <span>Impact, Explosion, Fire, Smoke, Spark, Magic, Beam, Trail, Ambient, Weather, UI</span></li>
+      <li><b>Audio</b> <span>SFX, UI, Ambience, Music, VO, Foley, Weapon, Creature, Interface, Cinematic</span></li>
+      <li><b>Animation</b> <span>Locomotion, Combat, Cinematic, Facial, Additive, Montage, Pose, IK, Physics, Traversal</span></li>
+      <li><b>Gameplay</b> <span>Weapon, Ability, Pickup, Objective, Interaction, Inventory, Quest, Progression, Crafting, Consumable, Reward</span></li>
+      <li><b>AI</b> <span>Behavior, Blackboard, EQS, Navigation, Perception, State, Decision, Spawn, Formation, Tuning</span></li>
+      <li><b>Physics</b> <span>Constraint, Collision, Ragdoll, Simulation, Vehicle, Cloth, Destruction, Trace, Material, Tuning</span></li>
+      <li><b>Input</b> <span>Action, Mapping, Config, Device, Rebind, Gameplay, UI, Debug</span></li>
+      <li><b>Networking</b> <span>Replication, Session, Lobby, Matchmaking, Online, Dedicated, Prediction, Sync, Debug</span></li>
+      <li><b>Data</b> <span>Table, Curve, Config, Balance, Tuning, Save, Profile, Localization, Analytics, Debug</span></li>
+      <li><b>Lighting</b> <span>Light, IES, LUT, HDRI, PostProcess, Fog, Volumetric, Bake, Debug</span></li>
+      <li><b>Materials</b> <span>Master, Instance, Function, Decal, PostProcess, Utility, Debug, Layer, Blend</span></li>
+      <li><b>Cinematic</b> <span>Sequence, Shot, Camera, Rig, Track, Audio, Animation, FX, Lighting</span></li>
+      <li><b>Tools</b> <span>Editor, Debug, Pipeline, Utility, Automation, Build, QA, Profiling, Sandbox, Test</span></li>
+      <li><b>Systems</b> <span>GameMode, Subsystem, Manager, Spawner, UIFlow, Save, Config, Runtime, Editor</span></li>
+      <li><b>World</b> <span>Map, SubLevel, Streaming, Dev, Test, Blockout, Benchmark, Lighting, Gameplay</span></li>
+      <li><b>Dev</b> <span>Prototype, Test, Debug, WIP, Temp, Sandbox, Benchmark, Migration</span></li>
+      <li><b>Localization</b> <span>Text, StringTable, Dialogue, VO, Font, Culture, Pipeline</span></li>
+      <li><b>FX</b> <span>Legacy, Cascade, Niagara, Temp, WIP</span></li>
+    </ul>
+    <p>Aliases (token normalization):</p>
+    <ul data-list="aliases">
+      <li><code>FoliageProps</code> to <code>Foliage</code></li>
+      <li><code>Chars</code> to <code>Character</code></li>
+      <li><code>Char</code> to <code>Character</code></li>
+      <li><code>Ui</code> to <code>UI</code></li>
+      <li><code>ui</code> to <code>UI</code></li>
+      <li><code>Vfx</code> to <code>VFX</code></li>
+      <li><code>Fx</code> to <code>VFX</code></li>
+      <li><code>fx</code> to <code>VFX</code></li>
+    </ul>
+    <p>When the settings load, the alias <code>Fx</code> turns the domain <code>FX</code> into <code>VFX</code>. NsBonsai then removes it as a copy of <code>VFX</code>.</p>
+  </details>
+  <p>The demo has no other assets and no recent picks. Thus the variant is always <code>A</code>, and the domain and category lists are in A to Z order. At rename, NsBonsai takes the first free variant.</p>
+</figure>

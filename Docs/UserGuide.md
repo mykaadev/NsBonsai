@@ -6,6 +6,8 @@ NsBonsai keeps asset names in one pattern. When you add, import, or rename an as
 
 NsBonsai renames an asset only when you confirm it. It writes no metadata into assets, does not move assets to other folders, and does not scan the whole project. It is an editor module and is not part of a packaged game.
 
+[![The final name of an old asset name, with each part in its own color](Showcase/img/namepruner.png)](Showcase/NamePruner.html)
+
 ## Setup
 
 1. Copy the `NsBonsai` folder into the `Plugins` folder of your project.
