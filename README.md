@@ -104,7 +104,7 @@ To review assets that exist already, select them in the Content Browser, right-c
 
 ## 📚 Documentation
 - [User Guide](https://mykaadev.github.io/plugins/nsbonsai/user-guide/) – Setup, common tasks, settings, and debug tools.
-- [Technical Documentation](https://mykaadev.github.io/plugins/nsbonsai/tech-documentation/) – Architecture, lifetime, extension points, and tests.
+- [Technical Documentation](https://mykaadev.github.io/plugins/nsbonsai/tech-documentation/) – Architecture, lifetime, and extension points.
 
 <!-- GH_ONLY_START -->
 ## ❤️ Credits
